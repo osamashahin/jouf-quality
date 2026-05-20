@@ -442,8 +442,8 @@ async function cSend(){
   };
   try {
     loading(true,'جاري الإرسال...');
-    await dbAddItem(item);
-    await dbAddLog(`إرسال إجراء "${item.proc}" إلى ${item.agency_name}`, actor:'لجنة المتابعة'});
+    await sb.post('procedures', item);
+    await sb.post('activity_log', {msg:`إرسال إجراء "${item.proc}" إلى ${item.agency_name}`, actor:'لجنة المتابعة'});
     await loadAll();
     loading(false);
     cClr();updateBadges();
@@ -486,7 +486,7 @@ function render_c_wait(){
   const items=ALL_ITEMS.filter(i=>i.status==='pending');
   document.getElementById('c-wait').innerHTML=`
     <div class="ph"><div class="pht"><h1>انتظار استجابة الجهات</h1><p>إجراءات مرسلة تنتظر رفع المستند</p></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_wait();updateBadges();toast('تم التحديث')})">🔄</button></div>
-    ${items.length?items.map(it=>`<div class="ic"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.critTitle} ← ${it.agencyName}</div></div><span class="bdg bp">⏳ انتظار</span></div><div class="notif ni">📝 ملاحظاتنا: ${it.committeeNote}</div>${it.committeeFile?`<div class="notif nok">📎 ${it.committeeFile}</div>`:''}<div style="font-size:11px;color:var(--mu)">أُرسل: ${it.sentAt}</div></div>`).join(''):'<div class="card"><div class="empty">✓ لا توجد إجراءات تنتظر</div></div>'}`;
+    ${items.length?items.map(it=>`<div class="ic"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title} ← ${it.agency_name}</div></div><span class="bdg bp">⏳ انتظار</span></div><div class="notif ni">📝 ملاحظاتنا: ${it.committee_note}</div>${it.committee_file?`<div class="notif nok">📎 ${it.committee_file}</div>`:''}<div style="font-size:11px;color:var(--mu)">أُرسل: ${it.sent_at}</div></div>`).join(''):'<div class="card"><div class="empty">✓ لا توجد إجراءات تنتظر</div></div>'}`;
 }
 window.render_c_wait = render_c_wait;
 
@@ -497,9 +497,9 @@ function render_c_appr(){
     <div class="ph"><div class="pht"><h1>جاهز للاعتماد</h1><p>الجهة رفعت المستند — بانتظار قرارك</p></div>
     <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="cApAll()">✅ اعتماد الكل</button><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_appr();updateBadges()})">🔄</button></div></div>
     ${items.length?items.map(it=>`<div class="ic new">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.critTitle}</div><div class="sub" style="margin-top:3px">${AGS[it.agency]?.icon||''} ${it.agencyName}</div></div><span class="bdg bu">📋 رُفع المستند</span></div>
-      ${it.committeeNote?`<div class="notif ni">📝 ملاحظاتنا: ${it.committeeNote}</div>`:''}
-      ${it.agencyFileNote?`<div class="notif nok">📎 مستند الجهة: ${it.agencyFileNote} <span style="color:var(--mu);font-size:10px">${fmtDate(it.agencyUploadedAt)}</span></div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div><div class="sub" style="margin-top:3px">${AGS[it.agency]?.icon||''} ${it.agency_name}</div></div><span class="bdg bu">📋 رُفع المستند</span></div>
+      ${it.committee_note?`<div class="notif ni">📝 ملاحظاتنا: ${it.committee_note}</div>`:''}
+      ${it.agency_file_note?`<div class="notif nok">📎 مستند الجهة: ${it.agency_file_note} <span style="color:var(--mu);font-size:10px">${fmtDate(it.agency_uploaded_at)}</span></div>`:''}
       <div class="fg"><label class="fl">ملاحظة الاعتماد/الإرجاع (اختياري)</label><textarea class="fc" id="fn-${it.id}" placeholder="ملاحظة للجهة..."></textarea></div>
       <div style="display:flex;gap:8px"><button class="btn btn-ok btn-sm" onclick="cDecide('${it.id}','approved')">✅ اعتماد</button><button class="btn btn-er btn-sm" onclick="cDecide('${it.id}','rejected')">↩ إرجاع</button></div>
     </div>`).join(''):'<div class="card"><div class="empty">لا توجد إجراءات جاهزة للاعتماد</div></div>'}`;
@@ -512,7 +512,7 @@ async function cDecide(id,status){
   try{
     loading(true,'جاري حفظ القرار...');
     await dbUpdateItem(id,{status,finalNote:note,decidedAt:new Date().toLocaleString('ar-SA')});
-    await dbAddLog(`${status==='approved'?'اعتماد':'إرجاع'} إجراء "${it?.proc}" (${it?.agency_name})`,actor:'لجنة المتابعة'});
+    await sb.post('activity_log', {msg:`${status==='approved'?'اعتماد':'إرجاع'} إجراء "${it?.proc}" (${it?.agency_name})`, actor:'لجنة المتابعة'});
     await loadAll();loading(false);
     render_c_appr();render_c_home();
     toast(status==='approved'?'✅ تم الاعتماد':'↩ تم الإرجاع',status==='approved');
@@ -527,7 +527,7 @@ async function cApAll(){
   try{
     const now=new Date().toISOString();
     for(const it of items){await dbUpdateItem(it.id,{status:'approved',finalNote:'',decidedAt:now});}
-    await dbAddLog(`اعتماد دفعي لـ ${items.length} إجراء`,'لجنة المتابعة'});
+    await sb.post('activity_log', {msg:`اعتماد دفعي لـ ${items.length} إجراء`, actor:'لجنة المتابعة'});
     await loadAll();loading(false);
     render_c_appr();render_c_home();toast(`✅ اعتماد ${items.length} إجراء`,true);
   }catch(e){loading(false);toast('❗ فشل: '+e.message);}
@@ -546,7 +546,7 @@ function render_c_all(){
       <select class="fc" style="width:auto" id="ca-s" onchange="render_c_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
     </div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
-    ${items.length?items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.critTitle}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agencyName}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committeeNote||'—'}</td><td style="font-size:11px">${it.agencyFileNote?'📎 '+it.agencyFileNote:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sentAt||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join(''):`<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>`}
+    ${items.length?items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join(''):`<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>`}
     </tbody></table></div></div>`;
 }
 window.render_c_all = render_c_all;
@@ -560,7 +560,7 @@ async function cDel(id){
 function cExp(){
   if(!ALL_ITEMS.length){toast('لا توجد بيانات');return;}
   const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
-  const rows=ALL_ITEMS.map(it=>[it.critTitle,it.proc,it.agencyName,STX[it.status]||'',it.committeeNote||'',it.agencyFileNote||'',it.sentAt||'',it.decidedAt?fmtDate(it.decidedAt):'']);
+  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',it.decided_at?fmtDate(it.decided_at):'']);
   const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='تقرير_الجودة.csv';a.click();toast('✓ تم التصدير',true);
 }
@@ -615,10 +615,10 @@ function render_ag_inbox(){
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_inbox();updateBadges();toast('تم التحديث')})">🔄 تحديث</button></div>
     <div class="notif nw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>دوركم <strong>رفع المستند فقط</strong> — الاعتماد والإرجاع من صلاحيات لجنة المتابعة.</div>
     ${items.length?items.map(it=>`<div class="ic new" id="ic-${it.id}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.critTitle}</div></div><span class="bdg bp">🔺 يتطلب رفع مستند</span></div>
-      <div class="notif ni">📝 <strong>ملاحظات لجنة المتابعة:</strong> ${it.committeeNote}</div>
-      ${it.committeeFile?`<div class="notif nok">📎 مستند مرجعي: ${it.committeeFile}</div>`:''}
-      <div style="font-size:11px;color:var(--mu);margin-bottom:12px">أُرسل: ${it.sentAt}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div><span class="bdg bp">🔺 يتطلب رفع مستند</span></div>
+      <div class="notif ni">📝 <strong>ملاحظات لجنة المتابعة:</strong> ${it.committee_note}</div>
+      ${it.committee_file?`<div class="notif nok">📎 مستند مرجعي: ${it.committee_file}</div>`:''}
+      <div style="font-size:11px;color:var(--mu);margin-bottom:12px">أُرسل: ${it.sent_at}</div>
       <div class="fg"><label class="fl">⬆ ارفع المستند المطلوب *</label>
         <div class="uz" id="uz-${it.id}" onclick="document.getElementById('fi-${it.id}').click()">📁 اضغط لاختيار الملف</div>
         <input type="file" id="fi-${it.id}" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="agMF(this,'${it.id}')">
@@ -637,7 +637,7 @@ async function agSub(id){
   try{
     loading(true,'جاري رفع المستند...');
     await dbUpdateItem(id,{status:'uploaded',agencyFileNote:fi.files[0].name,agencyUploadedAt:new Date().toLocaleString('ar-SA')});
-    await dbAddLog(`رفع مستند للإجراء "${it?.proc}"`,CU.name);
+    await sb.post('activity_log', {msg:`رفع مستند للإجراء "${it?.proc}"`, actor:CU.name});
     await loadAll();loading(false);
     render_ag_inbox();render_ag_home();
     toast('✅ تم رفع المستند — في انتظار قرار لجنة المتابعة',true);
@@ -651,7 +651,7 @@ function render_ag_done(){
   document.getElementById('ag-done').innerHTML=`
     <div class="ph"><div class="pht"><h1>تم رفع المستند</h1></div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>المعيار</th><th>الإجراء</th><th>المستند</th><th>تاريخ الرفع</th><th>قرار اللجنة</th></tr></thead><tbody>
-    ${items.length?items.map(it=>`<tr><td style="font-size:11px">${it.critTitle}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">📎 ${it.agencyFileNote}</td><td style="font-size:11px;color:var(--mu)">${fmtDate(it.agencyUploadedAt)}</td><td><span class="bdg ${lb[it.status]||''}">${tx[it.status]||it.status}</span></td></tr>`).join(''):`<tr><td colspan="5" class="empty">لا يوجد</td></tr>`}
+    ${items.length?items.map(it=>`<tr><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">📎 ${it.agency_file_note}</td><td style="font-size:11px;color:var(--mu)">${fmtDate(it.agency_uploaded_at)}</td><td><span class="bdg ${lb[it.status]||''}">${tx[it.status]||it.status}</span></td></tr>`).join(''):`<tr><td colspan="5" class="empty">لا يوجد</td></tr>`}
     </tbody></table></div></div>`;
 }
 window.render_ag_done = render_ag_done;
@@ -661,10 +661,10 @@ function render_ag_dec(){
   document.getElementById('ag-dec').innerHTML=`
     <div class="ph"><div class="pht"><h1>قرارات لجنة المتابعة</h1></div></div>
     ${items.length?items.map(it=>`<div class="ic" style="border-right:4px solid ${it.status==='approved'?'var(--ok)':'var(--er)'}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.critTitle}</div></div><span class="bdg ${it.status==='approved'?'ba':'br'}">${it.status==='approved'?'✅ معتمد':'↩ مُرجع'}</span></div>
-      ${it.agencyFileNote?`<div class="notif nok">📎 ${it.agencyFileNote}</div>`:''}
-      ${it.finalNote?`<div class="notif ni">💬 ملاحظة اللجنة: ${it.finalNote}</div>`:''}
-      <div style="font-size:11px;color:var(--mu)">صدر القرار: ${fmtDate(it.decidedAt)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div><span class="bdg ${it.status==='approved'?'ba':'br'}">${it.status==='approved'?'✅ معتمد':'↩ مُرجع'}</span></div>
+      ${it.agency_file_note?`<div class="notif nok">📎 ${it.agency_file_note}</div>`:''}
+      ${it.final_note?`<div class="notif ni">💬 ملاحظة اللجنة: ${it.final_note}</div>`:''}
+      <div style="font-size:11px;color:var(--mu)">صدر القرار: ${fmtDate(it.decided_at)}</div>
     </div>`).join(''):'<div class="card"><div class="empty">لم تصدر قرارات بعد</div></div>'}`;
 }
 window.render_ag_dec = render_ag_dec;
@@ -735,7 +735,7 @@ function render_adm_all(){
       <button class="btn btn-er btn-sm" onclick="admDelF()">حذف المُصفّى</button>
     </div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
-    ${items.length?items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.critTitle}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agencyName}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committeeNote||'—'}</td><td style="font-size:11px">${it.agencyFileNote?'📎 '+it.agencyFileNote:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sentAt||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decidedAt)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join(''):`<tr><td colspan="10" class="empty">لا يوجد</td></tr>`}
+    ${items.length?items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join(''):`<tr><td colspan="10" class="empty">لا يوجد</td></tr>`}
     </tbody></table></div></div>`;
 }
 window.render_adm_all = render_adm_all;
@@ -756,7 +756,7 @@ async function admDelF(){
 function admExp(){
   if(!ALL_ITEMS.length){toast('لا توجد بيانات');return;}
   const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
-  const rows=ALL_ITEMS.map(it=>[it.critTitle,it.proc,it.agencyName,STX[it.status]||'',it.committeeNote||'',it.agencyFileNote||'',it.sentAt||'',fmtDate(it.decidedAt)]);
+  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',fmtDate(it.decided_at)]);
   const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='تقرير_الجودة.csv';a.click();toast('✓ تم التصدير',true);
 }
@@ -767,7 +767,7 @@ function admPrint(){
 }
 
 function render_adm_ag(){
-  document.getElementById('adm-ag').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير الجهات</h1></div></div>${Object.entries(AGS).map(([k,ag])=>{const ags=ALL_ITEMS.filter(i=>i.agency===k);return `<div class="card" style="border-right:4px solid ${ag.color}"><div class="ctit" style="color:${ag.color}">${ag.icon} ${ag.name}</div><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><span class="bdg bs">${ags.length} إجمالي</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length} انتظار</span><span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length} جاهز</span><span class="bdg ba">${ags.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg br">${ags.filter(i=>i.status==='rejected').length} مُرجع</span></div>${ags.length?`<div class="tw"><table class="tbl" style="font-size:11px"><thead><tr><th>المعيار</th><th>الإجراء</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th></tr></thead><tbody>${ags.map(it=>`<tr><td>${it.critTitle}</td><td>${it.proc}</td><td style="color:var(--mu)">${it.committeeNote||'—'}</td><td>${it.agencyFileNote?'📎 '+it.agencyFileNote:'لم يُرفع'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">لا توجد إجراءات</div>'}</div>`;}).join('')}`;
+  document.getElementById('adm-ag').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير الجهات</h1></div></div>${Object.entries(AGS).map(([k,ag])=>{const ags=ALL_ITEMS.filter(i=>i.agency===k);return `<div class="card" style="border-right:4px solid ${ag.color}"><div class="ctit" style="color:${ag.color}">${ag.icon} ${ag.name}</div><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><span class="bdg bs">${ags.length} إجمالي</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length} انتظار</span><span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length} جاهز</span><span class="bdg ba">${ags.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg br">${ags.filter(i=>i.status==='rejected').length} مُرجع</span></div>${ags.length?`<div class="tw"><table class="tbl" style="font-size:11px"><thead><tr><th>المعيار</th><th>الإجراء</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th></tr></thead><tbody>${ags.map(it=>`<tr><td>${it.crit_title}</td><td>${it.proc}</td><td style="color:var(--mu)">${it.committee_note||'—'}</td><td>${it.agency_file_note?'📎 '+it.agency_file_note:'لم يُرفع'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">لا توجد إجراءات</div>'}</div>`;}).join('')}`;
 }
 window.render_adm_ag = render_adm_ag;
 
@@ -795,7 +795,7 @@ async function admRstAll(){
   if(!confirm('⚠ حذف كل الإجراءات والسجل نهائياً من Supabase؟'))return;
   loading(true,'جاري الحذف الكامل...');
   try{
-    await fetch(`${SB_URL}/rest/v1/procedures?id=like.*`,{method:'DELETE',headers:sb.headers});
+    await fetch(`${SB_URL}/rest/v1/procedures?created_at=gte.2000-01-01`,{method:'DELETE',headers:sb.headers});
     await fetch(`${SB_URL}/rest/v1/activity_log?id=gt.0`,{method:'DELETE',headers:sb.headers});
     await loadAll();loading(false);render_adm_h();toast('تم إعادة الضبط الكامل');
   }catch(e){loading(false);toast('❗ '+e.message);}
@@ -805,7 +805,7 @@ async function admRstItems(){
   if(!confirm('حذف الإجراءات مع الاحتفاظ بالسجل؟'))return;
   loading(true);
   try{
-    await fetch(`${SB_URL}/rest/v1/procedures?id=like.*`,{method:'DELETE',headers:sb.headers});
+    await fetch(`${SB_URL}/rest/v1/procedures?created_at=gte.2000-01-01`,{method:'DELETE',headers:sb.headers});
     await loadAll();loading(false);render_adm_h();toast('تم حذف الإجراءات');
   }catch(e){loading(false);toast('❗ '+e.message);}
 }
