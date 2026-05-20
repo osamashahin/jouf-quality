@@ -474,6 +474,7 @@ async function cSend() {
     agency: ag, agency_name: AGS[ag].name,
     committee_note: note, committee_file: fn,
     agency_file_note: '', agency_uploaded_at: '',
+    agency_note: '', resubmit_count: 0,
     status: 'pending', final_note: '', decided_at: '',
     sent_at: new Date().toLocaleString('ar-SA')
   };
@@ -558,6 +559,8 @@ function render_c_appr() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div><div class="sub" style="margin-top:3px">${AGS[it.agency]?.icon||''} ${it.agency_name}</div></div><span class="bdg bu">📋 رُفع المستند</span></div>
       ${it.committee_note?`<div class="notif ni">📝 ملاحظاتنا: ${it.committee_note}</div>`:''}
       ${it.agency_file_note?`<div class="notif nok">📎 ${it.agency_file_note} <span style="color:var(--mu);font-size:10px">${fmtDate(it.agency_uploaded_at)}</span></div>`:''}
+      ${it.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 13px;margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:4px">💬 رد الجهة وملاحظاتها:</div><div style="font-size:12px;color:#14532d">${it.agency_note}</div></div>`:''}
+      ${it.resubmit_count>0?`<div style="font-size:11px;color:var(--mu);margin-bottom:8px">🔄 عدد مرات إعادة الرفع: ${it.resubmit_count}</div>`:''}
       <div class="fg"><label class="fl">ملاحظة (اختياري)</label><textarea class="fc" id="fn-${it.id}" placeholder="ملاحظة للجهة..."></textarea></div>
       <div style="display:flex;gap:8px"><button class="btn btn-ok btn-sm" onclick="cDecide('${it.id}','approved')">✅ اعتماد</button><button class="btn btn-er btn-sm" onclick="cDecide('${it.id}','rejected')">↩ إرجاع</button></div>
     </div>`).join('') : '<div class="card"><div class="empty">لا توجد إجراءات جاهزة للاعتماد</div></div>'}`;
@@ -675,22 +678,63 @@ function render_ag_home() {
 window.render_ag_home = render_ag_home;
 
 function render_ag_inbox() {
-  const items=mine(i=>i.status==='pending'); updateBadges();
+  const pending=mine(i=>i.status==='pending');
+  const rejected=mine(i=>i.status==='rejected');
+  const items=[...rejected, ...pending]; // rejected first (urgent)
+  updateBadges();
+  const bdgN=document.getElementById('bdg-n');
+  if(bdgN) bdgN.textContent=items.length;
+
   document.getElementById('ag-inbox').innerHTML=`
-    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1><p>المطلوب رفع المستند فقط — الاعتماد من اللجنة</p></div>
+    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1><p>المطلوب رفع المستند — الاعتماد من اللجنة حصراً</p></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_inbox();updateBadges();toast('تم التحديث')})">🔄</button></div>
+    ${rejected.length ? `<div class="notif" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;margin-bottom:14px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      لديك <strong>${rejected.length}</strong> إجراء مُرجع من اللجنة — يرجى مراجعة الملاحظات وإعادة الرفع
+    </div>` : ''}
     <div class="notif nw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>دوركم <strong>رفع المستند فقط</strong> — الاعتماد والإرجاع من صلاحيات لجنة المتابعة.</div>
-    ${items.length ? items.map(it=>`<div class="ic new" id="ic-${it.id}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div><span class="bdg bp">🔺 يتطلب رفع مستند</span></div>
-      <div class="notif ni">📝 <strong>ملاحظات اللجنة:</strong> ${it.committee_note}</div>
-      ${it.committee_file?`<div class="notif nok">📎 مستند مرجعي: ${it.committee_file}</div>`:''}
-      <div style="font-size:11px;color:var(--mu);margin-bottom:12px">أُرسل: ${it.sent_at}</div>
-      <div class="fg"><label class="fl">⬆ ارفع المستند المطلوب *</label>
-        <div class="uz" id="uz-${it.id}" onclick="document.getElementById('fi-${it.id}').click()">📁 اضغط لاختيار الملف</div>
-        <input type="file" id="fi-${it.id}" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="agMF(this,'${it.id}')">
-      </div>
-      <button class="btn btn-p btn-sm" onclick="agSub('${it.id}')">رفع المستند ←</button>
-    </div>`).join('') : '<div class="card"><div class="empty">✓ لا توجد إجراءات معلقة</div></div>'}`;
+    ${items.length ? items.map(it => agBuildCard(it)).join('') : '<div class="card"><div class="empty">✓ لا توجد إجراءات معلقة أو مُرجعة</div></div>'}`;
+}
+
+function agBuildCard(it) {
+  const isRejected = it.status === 'rejected';
+  const borderColor = isRejected ? 'var(--er)' : '#fca5a5';
+  const bg = isRejected ? '#fffbfb' : '#fffbfb';
+  const badge = isRejected
+    ? '<span class="bdg br">↩ مُرجع — يتطلب إعادة رفع</span>'
+    : '<span class="bdg bp">🔺 يتطلب رفع مستند</span>';
+
+  const rejectedSection = isRejected ? `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 13px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#b91c1c;margin-bottom:4px">↩ سبب الإرجاع من اللجنة:</div>
+      <div style="font-size:12px;color:#7f1d1d">${it.final_note || 'لم تُذكر ملاحظات'}</div>
+    </div>
+    ${it.agency_file_note ? `<div class="notif" style="background:#f5f5f5;color:#555;border:1px solid #ddd;margin-bottom:10px">📎 المستند السابق: ${it.agency_file_note}</div>` : ''}
+    <div style="font-size:12px;font-weight:700;color:#b91c1c;margin-bottom:8px">⬆ يرجى رفع مستند جديد والرد على ملاحظات اللجنة:</div>
+  ` : '';
+
+  return `<div class="ic new" id="ic-${it.id}" style="border-right:4px solid ${borderColor}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div>
+      ${badge}
+    </div>
+    <div class="notif ni">📝 <strong>ملاحظات اللجنة:</strong> ${it.committee_note}</div>
+    ${it.committee_file ? `<div class="notif nok">📎 مستند مرجعي: ${it.committee_file}</div>` : ''}
+    <div style="font-size:11px;color:var(--mu);margin-bottom:10px">أُرسل: ${it.sent_at}</div>
+    ${rejectedSection}
+    <div class="fg">
+      <label class="fl">${isRejected ? '⬆ ارفع المستند المُعدَّل *' : '⬆ ارفع المستند المطلوب *'}</label>
+      <div class="uz" id="uz-${it.id}" onclick="document.getElementById('fi-${it.id}').click()">📁 اضغط لاختيار الملف</div>
+      <input type="file" id="fi-${it.id}" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="agMF(this,'${it.id}')">
+    </div>
+    <div class="fg">
+      <label class="fl">${isRejected ? '💬 ردك وملاحظاتك على اللجنة *' : '💬 ملاحظاتك (اختياري)'}</label>
+      <textarea class="fc" id="an-${it.id}" placeholder="${isRejected ? 'اكتب ردك على ملاحظات اللجنة وما تم تعديله...' : 'أي ملاحظات إضافية...'}" style="min-height:70px">${it.agency_note || ''}</textarea>
+    </div>
+    <button class="btn btn-p btn-sm" onclick="agSub('${it.id}',${isRejected})">
+      ${isRejected ? '↩ إعادة الرفع للجنة ←' : 'رفع المستند ←'}
+    </button>
+  </div>`;
 }
 window.render_ag_inbox = render_ag_inbox;
 
@@ -698,17 +742,31 @@ function agMF(inp, id) {
   if(inp.files[0]) { const z=document.getElementById('uz-'+id); z.innerHTML='✅ '+inp.files[0].name; z.classList.add('done'); }
 }
 
-async function agSub(id) {
+async function agSub(id, isResubmit) {
   const fi=document.getElementById('fi-'+id);
+  const noteEl=document.getElementById('an-'+id);
+  const agNote=noteEl?noteEl.value.trim():'';
   if(!fi||!fi.files[0]) { toast('❗ يرجى اختيار ملف أولاً'); return; }
+  if(isResubmit && !agNote) { toast('❗ يرجى كتابة ردك على ملاحظات اللجنة'); return; }
   const it=ALL_ITEMS.find(i=>i.id===id);
+  const resubCount=(it?.resubmit_count||0)+(isResubmit?1:0);
   try {
     loading(true, 'جاري رفع المستند...');
-    await sbPatch('procedures', id, {status:'uploaded', agency_file_note:fi.files[0].name, agency_uploaded_at:new Date().toISOString()});
-    await sbPost('activity_log', {msg:`رفع مستند للإجراء "${it?.proc}"`, actor:CU.name});
+    await sbPatch('procedures', id, {
+      status: 'uploaded',
+      agency_file_note: fi.files[0].name,
+      agency_uploaded_at: new Date().toISOString(),
+      agency_note: agNote,
+      resubmit_count: resubCount,
+      final_note: '', decided_at: ''
+    });
+    const logMsg = isResubmit
+      ? `إعادة رفع مستند للإجراء "${it?.proc}" (مرة ${resubCount})`
+      : `رفع مستند للإجراء "${it?.proc}"`;
+    await sbPost('activity_log', {msg:logMsg, actor:CU.name});
     await loadAll(); loading(false);
     render_ag_inbox(); render_ag_home();
-    toast('✅ تم رفع المستند — في انتظار قرار اللجنة', true);
+    toast(isResubmit ? '↩ تم إعادة الرفع — في انتظار قرار اللجنة' : '✅ تم رفع المستند — في انتظار قرار اللجنة', true);
   } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
 }
 
@@ -719,7 +777,7 @@ function render_ag_done() {
   document.getElementById('ag-done').innerHTML=`
     <div class="ph"><div class="pht"><h1>تم رفع المستند</h1></div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>المعيار</th><th>الإجراء</th><th>المستند</th><th>تاريخ الرفع</th><th>قرار اللجنة</th></tr></thead><tbody>
-    ${items.length ? items.map(it=>`<tr><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">📎 ${it.agency_file_note}</td><td style="font-size:11px;color:var(--mu)">${fmtDate(it.agency_uploaded_at)}</td><td><span class="bdg ${lb[it.status]||''}">${tx[it.status]||it.status}</span></td></tr>`).join('') : '<tr><td colspan="5" class="empty">لا يوجد مستندات مرفوعة</td></tr>'}
+    ${items.length ? items.map(it=>`<tr><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">📎 ${it.agency_file_note}${it.agency_note?`<br><span style="color:#15803d;font-size:10px">💬 ${it.agency_note}</span>`:''}</td><td style="font-size:11px;color:var(--mu)">${fmtDate(it.agency_uploaded_at)}</td><td><span class="bdg ${lb[it.status]||''}">${tx[it.status]||it.status}${it.resubmit_count>0?` (${it.resubmit_count}×)`:''}</span></td></tr>`).join('') : '<tr><td colspan="5" class="empty">لا يوجد مستندات مرفوعة</td></tr>'}
     </tbody></table></div></div>`;
 }
 window.render_ag_done = render_ag_done;
@@ -731,7 +789,8 @@ function render_ag_dec() {
     ${items.length ? items.map(it=>`<div class="ic" style="border-right:4px solid ${it.status==='approved'?'var(--ok)':'var(--er)'}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div><span class="bdg ${it.status==='approved'?'ba':'br'}">${it.status==='approved'?'✅ معتمد':'↩ مُرجع'}</span></div>
       ${it.agency_file_note?`<div class="notif nok">📎 ${it.agency_file_note}</div>`:''}
-      ${it.final_note?`<div class="notif ni">💬 ملاحظة اللجنة: ${it.final_note}</div>`:''}
+      ${it.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 12px;margin-bottom:8px;font-size:12px"><strong style="color:#15803d">💬 ملاحظاتنا المُرسلة للجنة:</strong><br>${it.agency_note}</div>`:''}
+      ${it.final_note?`<div class="notif ni">📋 ملاحظة اللجنة: ${it.final_note}</div>`:''}
       <div style="font-size:11px;color:var(--mu)">صدر القرار: ${fmtDate(it.decided_at)}</div>
     </div>`).join('') : '<div class="card"><div class="empty">لم تصدر قرارات بعد</div></div>'}`;
 }
