@@ -204,61 +204,50 @@ textarea.fc{resize:vertical;min-height:75px}
 <div id="toast"></div>
 
 <script>
-// ══════════════════════════════════════════════════════
-//  PERSISTENT STORAGE — window.storage API (Claude.ai)
-//  البيانات تُحفظ بشكل دائم عبر جميع الجلسات والأجهزة
-// ══════════════════════════════════════════════════════
-
-const K_ITEMS = 'jouf:items:v1';
-const K_LOG   = 'jouf:log:v1';
-
-async function dbGetItems() {
-  try { const r = await window.storage.get(K_ITEMS); return r ? JSON.parse(r.value) : []; }
-  catch(e) { return []; }
-}
-async function dbSaveItems(arr) {
-  try { await window.storage.set(K_ITEMS, JSON.stringify(arr)); } catch(e) { console.error('save items', e); }
-}
-async function dbGetLogs() {
-  try { const r = await window.storage.get(K_LOG); return r ? JSON.parse(r.value) : []; }
-  catch(e) { return []; }
-}
-async function dbSaveLogs(arr) {
-  try { await window.storage.set(K_LOG, JSON.stringify(arr)); } catch(e) { console.error('save log', e); }
-}
-async function dbAddItem(item) {
-  const arr = await dbGetItems(); arr.push(item); await dbSaveItems(arr);
-}
-async function dbUpdateItem(id, upd) {
-  const arr = await dbGetItems();
-  const i = arr.findIndex(x => x.id === id);
-  if (i !== -1) { Object.assign(arr[i], upd); await dbSaveItems(arr); return true; }
-  return false;
-}
-async function dbDeleteItem(id) {
-  const arr = await dbGetItems(); await dbSaveItems(arr.filter(x => x.id !== id));
-}
-async function dbAddLog(msg, actor) {
-  const arr = await dbGetLogs();
-  arr.unshift({ msg, actor: actor||'النظام', t: new Date().toLocaleString('ar-SA') });
-  if (arr.length > 200) arr.pop();
-  await dbSaveLogs(arr);
-}
-async function dbResetAll() { await window.storage.delete(K_ITEMS); await window.storage.delete(K_LOG); }
-async function dbResetItems() { await dbSaveItems([]); }
-async function dbResetLogs() { await dbSaveLogs([]); }
-
-// compat shim - map old sb.* calls to new API
-const sb = {
-  async getItems(agency) {
-    const arr = await dbGetItems();
-    return agency ? arr.filter(i => i.agency === agency) : arr;
-  },
-  async getLogs() { return dbGetLogs(); }
+// ═══════════════════════════════════════════
+//  SUPABASE CLIENT
+// ═══════════════════════════════════════════
+const SB_URL = 'https://tfxdvmrgwgruvnjxifyd.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmeGR2bXJnd2dydXZuanhpZnlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDI4NjcsImV4cCI6MjA5NDg3ODg2N30.FyvoCWBzZJQ0cTAUaXChETVdmTpioZsGMgsNaoF8Y4E';
+const SB_H = {
+  'apikey': SB_KEY,
+  'Authorization': 'Bearer ' + SB_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
 };
 
-// ══ STATIC DATA ══
-const CRITERIA=[
+async function sbGet(table, params) {
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?'+(params||''), {headers:SB_H});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbPost(table, data) {
+  const r = await fetch(SB_URL+'/rest/v1/'+table, {method:'POST',headers:SB_H,body:JSON.stringify(data)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbPatch(table, id, data) {
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?id=eq.'+id, {method:'PATCH',headers:{...SB_H,'Prefer':'return=minimal'},body:JSON.stringify(data)});
+  if (!r.ok) throw new Error(await r.text());
+}
+async function sbDelete(table, id) {
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?id=eq.'+id, {method:'DELETE',headers:SB_H});
+  if (!r.ok) throw new Error(await r.text());
+}
+async function sbDeleteAll(table) {
+  // Delete all rows using a always-true filter
+  const r = await fetch(SB_URL+'/rest/v1/'+table+'?id=gte.0', {method:'DELETE',headers:SB_H});
+  if (!r.ok) {
+    // For text primary keys
+    const r2 = await fetch(SB_URL+'/rest/v1/'+table+'?created_at=gte.2000-01-01', {method:'DELETE',headers:SB_H});
+    if (!r2.ok) throw new Error(await r2.text());
+  }
+}
+
+// ═══════════════════════════════════════════
+//  STATIC DATA
+// ═══════════════════════════════════════════
+const CRITERIA = [
   {title:"الرسالة والهوية المؤسسية",items:["صياغة الرسالة المؤسسية","اعتماد الرسالة رسميًا","نشر الرسالة داخليًا","نشر الرسالة خارجيًا","مراجعة الرسالة دوريًا","مواءمة الرسالة مع رؤية الجهة","ربط الأهداف بالرسالة","توثيق الهوية المؤسسية","الالتزام بالقيم المؤسسية","قياس فهم العاملين للرسالة","تضمين الرسالة في الخطط","تحديث الرسالة عند الحاجة"]},
   {title:"الحوكمة والقيادة",items:["اعتماد الهيكل التنظيمي","توصيف الوظائف","تحديد الصلاحيات","تشكيل اللجان","تنظيم اجتماعات القيادة","توثيق القرارات","إدارة المخاطر","إدارة الامتثال","الشفافية الإدارية","المساءلة المؤسسية","تفويض الصلاحيات","تقييم أداء القيادات","التخطيط الاستراتيجي","متابعة تنفيذ الخطط"]},
   {title:"التعليم والتعلّم",items:["اعتماد الخطط الدراسية","توصيف المقررات","مواءمة المخرجات","تنوع استراتيجيات التدريس","تطبيق التقويم العادل","توثيق أدوات التقويم","متابعة تنفيذ المناهج","مراجعة المقررات","دعم التعلم النشط","مراعاة الفروق الفردية","استخدام التقنية التعليمية","تقويم التدريس","تحسين أساليب التعليم","أرشفة المحتوى التعليمي"]},
@@ -268,123 +257,148 @@ const CRITERIA=[
   {title:"إدارة الجودة والتحسين المستمر",items:["نظام الجودة","التقويم الذاتي","مؤشرات الأداء","جمع البيانات","تحليل النتائج","الخطط التحسينية","متابعة التنفيذ","قياس الأثر","التدقيق الداخلي","التقارير الدورية","إدارة الوثائق","التحسين المستمر"]},
   {title:"الشراكة والمسؤولية المجتمعية",items:["سياسة الشراكات","التواصل مع المجتمع","إشراك أولياء الأمور","خدمة المجتمع","المبادرات المجتمعية","قياس الأثر المجتمعي","رضا المستفيدين","الإعلام المؤسسي","السمعة المؤسسية","التطوع","الاستدامة المجتمعية","توثيق الشراكات","تطوير الشراكات","مراجعة دور المؤسسة"]}
 ];
-const ORD=['أول','ثان','ثالث','رابع','خامس','سادس','سابع','ثامن'];
-const AGS={academic:{name:"وكالة الشؤون التعليمية",icon:"📚",color:"#1d4ed8"},main:{name:"وكالة الجامعة",icon:"🏫",color:"#7c3aed"},postgrad:{name:"وكالة الدراسات العليا",icon:"🎓",color:"#0891b2"}};
-const USERS={
-  committee:{pass:'quality2024',name:'لجنة المتابعة',role:'committee',grad:'linear-gradient(135deg,#4a2878,#6b3fa0)'},
-  academic:{pass:'academic2024',name:'وكالة الشؤون التعليمية',role:'agency',agency:'academic',grad:'linear-gradient(135deg,#1e3a8a,#1d4ed8)'},
-  main:{pass:'main2024',name:'وكالة الجامعة',role:'agency',agency:'main',grad:'linear-gradient(135deg,#4c1d95,#7c3aed)'},
-  postgrad:{pass:'postgrad2024',name:'وكالة الدراسات العليا',role:'agency',agency:'postgrad',grad:'linear-gradient(135deg,#0c4a6e,#0891b2)'},
-  admin:{pass:'admin2024',name:'مدير النظام',role:'admin',grad:'linear-gradient(135deg,#111827,#374151)'}
+const ORD = ['أول','ثان','ثالث','رابع','خامس','سادس','سابع','ثامن'];
+const AGS = {
+  academic: {name:"وكالة الشؤون التعليمية", icon:"📚", color:"#1d4ed8"},
+  main:     {name:"وكالة الجامعة",           icon:"🏫", color:"#7c3aed"},
+  postgrad: {name:"وكالة الدراسات العليا",   icon:"🎓", color:"#0891b2"}
 };
-const SLB={pending:'bp',uploaded:'bu',approved:'ba',rejected:'br'};
-const STX={pending:'⏳ انتظار الجهة',uploaded:'📋 جاهز للاعتماد',approved:'✅ معتمد',rejected:'↩ مُرجع'};
+const USERS = {
+  committee: {pass:'quality2024',  name:'لجنة المتابعة',           role:'committee', grad:'linear-gradient(135deg,#4a2878,#6b3fa0)'},
+  academic:  {pass:'academic2024', name:'وكالة الشؤون التعليمية', role:'agency', agency:'academic', grad:'linear-gradient(135deg,#1e3a8a,#1d4ed8)'},
+  main:      {pass:'main2024',     name:'وكالة الجامعة',           role:'agency', agency:'main',     grad:'linear-gradient(135deg,#4c1d95,#7c3aed)'},
+  postgrad:  {pass:'postgrad2024', name:'وكالة الدراسات العليا',   role:'agency', agency:'postgrad', grad:'linear-gradient(135deg,#0c4a6e,#0891b2)'},
+  admin:     {pass:'admin2024',    name:'مدير النظام',             role:'admin',  grad:'linear-gradient(135deg,#111827,#374151)'}
+};
+const SLB = {pending:'bp', uploaded:'bu', approved:'ba', rejected:'br'};
+const STX = {pending:'⏳ انتظار الجهة', uploaded:'📋 جاهز للاعتماد', approved:'✅ معتمد', rejected:'↩ مُرجع'};
 
-// ══ STATE ══
-let CU=null, ALL_ITEMS=[], ALL_LOGS=[], refreshTimer=null;
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let CU = null, ALL_ITEMS = [], ALL_LOGS = [], refreshTimer = null;
 
-// ══ HELPERS ══
-function toast(m,ok=false){const t=document.getElementById('toast');t.textContent=m;t.style.background=ok?'#15803d':undefined;t.classList.add('show');setTimeout(()=>{t.classList.remove('show');t.style.background='';},2800)}
-function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active')}
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));const el=document.getElementById(id);if(el)el.classList.add('active')}
-function sbAct(el){document.querySelectorAll('.sbi').forEach(i=>i.classList.remove('active'));el.classList.add('active')}
-function loading(show,msg='جاري التحميل...'){const o=document.getElementById('loading-overlay');const m=document.getElementById('loading-msg');if(m)m.textContent=msg;o.classList.toggle('show',show)}
-function fmtDate(d){return d?new Date(d).toLocaleString('ar-SA'):'—'}
+// ═══════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════
+function toast(m, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = m;
+  t.style.background = ok ? '#15803d' : '';
+  t.classList.add('show');
+  setTimeout(() => { t.classList.remove('show'); t.style.background=''; }, 2800);
+}
+function showPage(id) { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function showScreen(id) { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); const el=document.getElementById(id); if(el) el.classList.add('active'); }
+function sbAct(el) { document.querySelectorAll('.sbi').forEach(i=>i.classList.remove('active')); el.classList.add('active'); }
+function loading(show, msg) { const o=document.getElementById('loading-overlay'); const m=document.getElementById('loading-msg'); if(m&&msg) m.textContent=msg; o.classList.toggle('show',show); }
+function fmtDate(d) { return d ? new Date(d).toLocaleString('ar-SA') : '—'; }
 
-// ══ STORAGE CHECK ══
-async function checkDbAndClose(){
-  
-  loading(true,'جاري تحميل البيانات...');
-  try {
-    await loadAll();
-    loading(false);
-    toast('✓ تم تحميل البيانات بنجاح',true);
-  } catch(e) {
-    loading(false);
-    toast('⚠ تعذر تحميل البيانات: '+e.message);
-  }
+async function loadAll() {
+  const [items, logs] = await Promise.all([
+    sbGet('procedures', 'select=*&order=created_at.desc'),
+    sbGet('activity_log', 'select=*&order=created_at.desc&limit=100')
+  ]);
+  ALL_ITEMS = items || [];
+  ALL_LOGS  = logs  || [];
 }
 
-// ══ LOGIN ══
-function fill(u,p){document.getElementById('usr').value=u;document.getElementById('pwd').value=p;document.getElementById('err').classList.remove('show')}
-function togglePwd(){const p=document.getElementById('pwd');p.type=p.type==='password'?'text':'password'}
-async function doLogin(){
-  const u=document.getElementById('usr').value.trim(),p=document.getElementById('pwd').value;
+function refreshUI() {
+  const a = document.querySelector('.screen.active');
+  if (a && window['render_'+a.id]) window['render_'+a.id]();
+  updateBadges();
+}
+
+function updateBadges() {
+  const bw = document.getElementById('bdg-w');
+  const ba = document.getElementById('bdg-a');
+  const bn = document.getElementById('bdg-n');
+  if (bw) bw.textContent = ALL_ITEMS.filter(i=>i.status==='pending').length;
+  if (ba) ba.textContent = ALL_ITEMS.filter(i=>i.status==='uploaded').length;
+  if (bn && CU && CU.agency) bn.textContent = ALL_ITEMS.filter(i=>i.agency===CU.agency&&i.status==='pending').length;
+}
+
+// ═══════════════════════════════════════════
+//  ICONS
+// ═══════════════════════════════════════════
+const ico = {
+  grid: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+  send: '<svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  doc:  '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  list: '<svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>',
+  pen:  '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  bell: '<svg viewBox="0 0 24 24"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>',
+  ppl:  '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  bar:  '<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  trash:'<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+};
+
+// ═══════════════════════════════════════════
+//  LOGIN
+// ═══════════════════════════════════════════
+function fill(u,p) { document.getElementById('usr').value=u; document.getElementById('pwd').value=p; document.getElementById('err').classList.remove('show'); }
+function togglePwd() { const p=document.getElementById('pwd'); p.type=p.type==='password'?'text':'password'; }
+
+async function doLogin() {
+  const u=document.getElementById('usr').value.trim(), p=document.getElementById('pwd').value;
   const btn=document.getElementById('btn-login');
   document.getElementById('err').classList.remove('show');
-  if(!u||!p){showErr('يرجى إدخال اسم المستخدم وكلمة المرور');return}
-  btn.innerHTML='جاري التحقق <span class="spinner"></span>';btn.disabled=true;
-  await new Promise(r=>setTimeout(r,600));
+  if(!u||!p) { showErr('يرجى إدخال اسم المستخدم وكلمة المرور'); return; }
+  btn.innerHTML='جاري التحقق <span class="spinner"></span>'; btn.disabled=true;
+  await new Promise(r=>setTimeout(r,500));
   const user=USERS[u];
-  if(!user||user.pass!==p){btn.innerHTML='دخول ←';btn.disabled=false;showErr('اسم المستخدم أو كلمة المرور غير صحيحة');document.getElementById('pwd').value='';return}
+  if(!user||user.pass!==p) {
+    btn.innerHTML='دخول ←'; btn.disabled=false;
+    showErr('اسم المستخدم أو كلمة المرور غير صحيحة');
+    document.getElementById('pwd').value=''; return;
+  }
   CU={id:u,...user};
   btn.innerHTML='✓ جاري الدخول...';
   await enterApp();
 }
-function showErr(m){const b=document.getElementById('err');document.getElementById('err-msg').textContent=m;b.classList.add('show')}
-function doLogout(){if(!confirm('تسجيل الخروج؟'))return;CU=null;if(refreshTimer)clearInterval(refreshTimer);ALL_ITEMS=[];ALL_LOGS=[];document.getElementById('usr').value='';document.getElementById('pwd').value='';document.getElementById('btn-login').innerHTML='دخول ←';document.getElementById('btn-login').disabled=false;showPage('pg-login')}
 
-// ══ ENTER APP ══
-async function enterApp(){
-  document.getElementById('topbar').style.background=CU.grad;
-  document.getElementById('uchip').textContent='👤 '+CU.name;
+function showErr(m) { const b=document.getElementById('err'); document.getElementById('err-msg').textContent=m; b.classList.add('show'); }
+
+function doLogout() {
+  if(!confirm('تسجيل الخروج؟')) return;
+  CU=null; if(refreshTimer) clearInterval(refreshTimer); ALL_ITEMS=[]; ALL_LOGS=[];
+  document.getElementById('usr').value=''; document.getElementById('pwd').value='';
+  document.getElementById('btn-login').innerHTML='دخول ←'; document.getElementById('btn-login').disabled=false;
+  showPage('pg-login');
+}
+
+// ═══════════════════════════════════════════
+//  APP SHELL
+// ═══════════════════════════════════════════
+async function enterApp() {
+  document.getElementById('topbar').style.background = CU.grad;
+  document.getElementById('uchip').textContent = '👤 ' + CU.name;
   showPage('pg-app');
-  loading(true,'جاري تحميل البيانات...');
+  loading(true, 'جاري تحميل البيانات...');
   try {
     await loadAll();
     loading(false);
     if(CU.role==='committee') buildCommittee();
     else if(CU.role==='agency') buildAgency();
     else buildAdmin();
-    // Auto-refresh every 30s
-    if(refreshTimer)clearInterval(refreshTimer);
-    refreshTimer=setInterval(async()=>{await loadAll();refreshUI();},30000);
+    if(refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(async()=>{ await loadAll(); refreshUI(); }, 30000);
   } catch(e) {
     loading(false);
-    toast('❗ خطأ في الاتصال بقاعدة البيانات: '+e.message);
-    document.getElementById('btn-login').innerHTML='دخول ←';document.getElementById('btn-login').disabled=false;
+    document.getElementById('btn-login').innerHTML='دخول ←';
+    document.getElementById('btn-login').disabled=false;
     showPage('pg-login');
+    showErr('❗ فشل الاتصال بقاعدة البيانات. تأكد من تشغيل كود SQL في Supabase.');
   }
 }
 
-async function loadAll(){
-  ALL_ITEMS = await dbGetItems();
-  ALL_LOGS = await dbGetLogs();
-}
-
-function refreshUI(){
-  const active=document.querySelector('.screen.active');
-  if(active && window['render_'+active.id]) window['render_'+active.id]();
-  updateBadges();
-}
-
-function updateBadges(){
-  const bdgW=document.getElementById('bdg-w'),bdgA=document.getElementById('bdg-a'),bdgN=document.getElementById('bdg-n');
-  if(bdgW)bdgW.textContent=ALL_ITEMS.filter(i=>i.status==='pending').length;
-  if(bdgA)bdgA.textContent=ALL_ITEMS.filter(i=>i.status==='uploaded').length;
-  if(bdgN && CU.agency)bdgN.textContent=ALL_ITEMS.filter(i=>i.agency===CU.agency&&i.status==='pending').length;
-}
-
-// ══ SVG ICONS ══
-const ico={
-  grid:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-  check:'<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-  send:'<svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
-  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-  doc:'<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-  list:'<svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>',
-  pen:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
-  bell:'<svg viewBox="0 0 24 24"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>',
-  ppl:'<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  bar:'<svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
-  trash:'<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
-};
-
-// ══════════════════════════════
-// COMMITTEE
-// ══════════════════════════════
-function buildCommittee(){
-  document.getElementById('sidebar').innerHTML=`
+// ═══════════════════════════════════════════
+//  ① COMMITTEE
+// ═══════════════════════════════════════════
+function buildCommittee() {
+  document.getElementById('sidebar').innerHTML = `
     <div class="sbg">الرئيسية</div>
     <div class="sbi active" onclick="sbAct(this);showScreen('c-home');render_c_home()">${ico.grid}نظرة عامة</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-crit');render_c_crit()">${ico.check}المعايير والإجراءات</div>
@@ -396,18 +410,30 @@ function buildCommittee(){
     <div class="sbi" onclick="sbAct(this);showScreen('c-all');render_c_all()">${ico.list}جميع الإجراءات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-log');render_c_log()">${ico.pen}سجل النشاط</div>`;
 
-  document.getElementById('mc').innerHTML=`
+  document.getElementById('mc').innerHTML = `
     <div class="screen active" id="c-home"></div>
     <div class="screen" id="c-crit"></div>
     <div class="screen" id="c-send">
       <div class="ph"><div class="pht"><h1>إرسال إجراء</h1><p>اختر المعيار والإجراء والجهة مع ملاحظاتك</p></div></div>
       <div class="card" style="max-width:620px">
-        <div class="fg"><label class="fl">المعيار *</label><select class="fc" id="cs-c" onchange="cFP()"><option value="">— اختر —</option>${CRITERIA.map((c,i)=>`<option value="${i}">معيار ${ORD[i]}: ${c.title} (${c.items.length})</option>`).join('')}</select></div>
+        <div class="fg"><label class="fl">المعيار *</label>
+          <select class="fc" id="cs-c" onchange="cFP()"><option value="">— اختر —</option>
+          ${CRITERIA.map((c,i)=>`<option value="${i}">معيار ${ORD[i]}: ${c.title} (${c.items.length})</option>`).join('')}</select></div>
         <div class="fg"><label class="fl">الإجراء *</label><select class="fc" id="cs-p"><option value="">— اختر —</option></select></div>
-        <div class="fg"><label class="fl">الجهة *</label><select class="fc" id="cs-a"><option value="">— اختر —</option><option value="academic">📚 وكالة الشؤون التعليمية</option><option value="main">🏫 وكالة الجامعة</option><option value="postgrad">🎓 وكالة الدراسات العليا</option></select></div>
-        <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label><textarea class="fc" id="cs-n" placeholder="اكتب المتطلبات..."></textarea></div>
-        <div class="fg"><label class="fl">مستند مرجعي (اختياري)</label><div class="uz" id="cs-uz" onclick="document.getElementById('cs-f').click()">📎 اضغط لإرفاق مستند</div><input type="file" id="cs-f" style="display:none" onchange="cMF(this)"></div>
-        <div style="display:flex;gap:8px"><button class="btn btn-p" onclick="cSend()">إرسال ←</button><button class="btn btn-g" onclick="cClr()">مسح</button></div>
+        <div class="fg"><label class="fl">الجهة *</label>
+          <select class="fc" id="cs-a"><option value="">— اختر —</option>
+          <option value="academic">📚 وكالة الشؤون التعليمية</option>
+          <option value="main">🏫 وكالة الجامعة</option>
+          <option value="postgrad">🎓 وكالة الدراسات العليا</option></select></div>
+        <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
+          <textarea class="fc" id="cs-n" placeholder="اكتب المتطلبات..."></textarea></div>
+        <div class="fg"><label class="fl">مستند مرجعي (اختياري)</label>
+          <div class="uz" id="cs-uz" onclick="document.getElementById('cs-f').click()">📎 اضغط لإرفاق مستند</div>
+          <input type="file" id="cs-f" style="display:none" onchange="cMF(this)"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-p" onclick="cSend()">إرسال ←</button>
+          <button class="btn btn-g" onclick="cClr()">مسح</button>
+        </div>
       </div>
     </div>
     <div class="screen" id="c-wait"></div>
@@ -415,48 +441,58 @@ function buildCommittee(){
     <div class="screen" id="c-all"></div>
     <div class="screen" id="c-log"></div>`;
 
-  render_c_home();
-  updateBadges();
+  render_c_home(); updateBadges();
 }
 
-function cFP(){const ci=parseInt(document.getElementById('cs-c').value);const sel=document.getElementById('cs-p');sel.innerHTML='<option value="">— اختر —</option>';if(!isNaN(ci))CRITERIA[ci].items.forEach((it,i)=>sel.innerHTML+=`<option value="${i}">${it}</option>`);}
-function cMF(inp){if(inp.files[0]){const z=document.getElementById('cs-uz');z.textContent='✅ '+inp.files[0].name;z.classList.add('done');}}
-function cClr(){document.getElementById('cs-c').value='';cFP();document.getElementById('cs-a').value='';document.getElementById('cs-n').value='';document.getElementById('cs-f').value='';const z=document.getElementById('cs-uz');z.textContent='📎 اضغط لإرفاق مستند';z.classList.remove('done');}
+function cFP() {
+  const ci = parseInt(document.getElementById('cs-c').value);
+  const sel = document.getElementById('cs-p');
+  sel.innerHTML = '<option value="">— اختر —</option>';
+  if(!isNaN(ci)) CRITERIA[ci].items.forEach((it,i) => sel.innerHTML += `<option value="${i}">${it}</option>`);
+}
+function cMF(inp) {
+  if(inp.files[0]) { const z=document.getElementById('cs-uz'); z.textContent='✅ '+inp.files[0].name; z.classList.add('done'); }
+}
+function cClr() {
+  document.getElementById('cs-c').value=''; cFP();
+  document.getElementById('cs-a').value=''; document.getElementById('cs-n').value='';
+  document.getElementById('cs-f').value='';
+  const z=document.getElementById('cs-uz'); z.textContent='📎 اضغط لإرفاق مستند'; z.classList.remove('done');
+}
 
-async function cSend(){
-  const ci=document.getElementById('cs-c').value,pi=document.getElementById('cs-p').value;
-  const ag=document.getElementById('cs-a').value,note=document.getElementById('cs-n').value.trim();
+async function cSend() {
+  const ci=document.getElementById('cs-c').value, pi=document.getElementById('cs-p').value;
+  const ag=document.getElementById('cs-a').value, note=document.getElementById('cs-n').value.trim();
   const fi=document.getElementById('cs-f');
-  if(ci===''||pi===''||ag===''){toast('❗ يرجى إكمال الحقول المطلوبة');return;}
-  if(!note){toast('❗ يرجى كتابة الملاحظات للجهة');return;}
-  const fn=fi.files[0]?fi.files[0].name:'';
-  const item={
-    id:'p'+Date.now()+Math.random().toString(36).slice(2,5),
-    critIdx:parseInt(ci), critTitle:CRITERIA[ci].title,
-    proc:CRITERIA[ci].items[parseInt(pi)],
-    agency:ag, agencyName:AGS[ag].name,
-    committeeNote:note, committeeFile:fn,
-    agencyFileNote:'', agencyUploadedAt:'',
-    status:'pending', finalNote:'', decidedAt:'',
-    sentAt:new Date().toLocaleString('ar-SA')
+  if(ci===''||pi===''||ag==='') { toast('❗ يرجى إكمال الحقول المطلوبة'); return; }
+  if(!note) { toast('❗ يرجى كتابة الملاحظات للجهة'); return; }
+  const fn = fi.files[0] ? fi.files[0].name : '';
+  const item = {
+    id: 'p'+Date.now()+Math.random().toString(36).slice(2,5),
+    crit_idx: parseInt(ci), crit_title: CRITERIA[ci].title,
+    proc: CRITERIA[ci].items[parseInt(pi)],
+    agency: ag, agency_name: AGS[ag].name,
+    committee_note: note, committee_file: fn,
+    agency_file_note: '', agency_uploaded_at: '',
+    status: 'pending', final_note: '', decided_at: '',
+    sent_at: new Date().toLocaleString('ar-SA')
   };
   try {
-    loading(true,'جاري الإرسال...');
-    await sb.post('procedures', item);
-    await sb.post('activity_log', {msg:`إرسال إجراء "${item.proc}" إلى ${item.agency_name}`, actor:'لجنة المتابعة'});
-    await loadAll();
-    loading(false);
-    cClr();updateBadges();
-    toast(`✓ تم الإرسال إلى ${item.agency_name}`,true);
-  } catch(e){loading(false);toast('❗ فشل الإرسال: '+e.message);}
+    loading(true, 'جاري الإرسال...');
+    await sbPost('procedures', item);
+    await sbPost('activity_log', {msg:`إرسال إجراء "${item.proc}" إلى ${item.agency_name}`, actor:'لجنة المتابعة'});
+    await loadAll(); loading(false);
+    cClr(); updateBadges();
+    toast('✓ تم الإرسال إلى '+item.agency_name, true);
+  } catch(e) { loading(false); toast('❗ فشل الإرسال: '+e.message); }
 }
 
-function render_c_home(){
-  const t=ALL_ITEMS.length,w=ALL_ITEMS.filter(i=>i.status==='pending').length;
-  const rd=ALL_ITEMS.filter(i=>i.status==='uploaded').length,ap=ALL_ITEMS.filter(i=>i.status==='approved').length;
+function render_c_home() {
+  const t=ALL_ITEMS.length, w=ALL_ITEMS.filter(i=>i.status==='pending').length;
+  const rd=ALL_ITEMS.filter(i=>i.status==='uploaded').length, ap=ALL_ITEMS.filter(i=>i.status==='approved').length;
   updateBadges();
-  document.getElementById('c-home').innerHTML=`
-    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>لجنة متابعة أعمال الجودة — بيانات حية من Supabase ☁</p></div></div>
+  document.getElementById('c-home').innerHTML = `
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>لجنة متابعة أعمال الجودة — Supabase ☁</p></div></div>
     <div class="sr">
       <div class="sc" style="border-top:3px solid #6b3fa0"><div class="ico">📤</div><div class="num">${t}</div><div class="lbl">إجمالي المُرسلة</div></div>
       <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${w}</div><div class="lbl">انتظار الجهة</div></div>
@@ -464,117 +500,146 @@ function render_c_home(){
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${ap}</div><div class="lbl">معتمد نهائياً</div></div>
     </div>
     <div class="g2">
-      <div class="card"><div class="ctit">${ico.bar}تقدم المعايير</div>${CRITERIA.map((c,i)=>{const cnt=ALL_ITEMS.filter(x=>x.crit_idx===i).length;const pct=Math.round(cnt/c.items.length*100);return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;}).join('')}</div>
+      <div class="card"><div class="ctit">${ico.bar}تقدم المعايير</div>
+        ${CRITERIA.map((c,i) => {
+          const cnt=ALL_ITEMS.filter(x=>x.crit_idx===i).length;
+          const pct=Math.round(cnt/c.items.length*100);
+          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
+        }).join('')}
+      </div>
       <div>
-        <div class="card" style="margin-bottom:14px"><div class="ctit">${ico.ppl}توزيع على الجهات</div>${Object.entries(AGS).map(([k,ag])=>{const tot=ALL_ITEMS.filter(i=>i.agency===k).length,w2=ALL_ITEMS.filter(i=>i.agency===k&&i.status==='pending').length,rd2=ALL_ITEMS.filter(i=>i.agency===k&&i.status==='uploaded').length,ap2=ALL_ITEMS.filter(i=>i.agency===k&&i.status==='approved').length;return `<div style="padding:8px 0;border-bottom:1px solid var(--bd);font-size:12px;display:flex;align-items:center;gap:6px">${ag.icon}<span style="flex:1;font-weight:600">${ag.name}</span><span class="bdg bs">${tot}</span><span class="bdg bp">${w2}</span><span class="bdg bu">${rd2}</span><span class="bdg ba">${ap2}</span></div>`;}).join('')}</div>
-        <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>${ALL_LOGS.slice(0,8).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg}</div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('')||'<div class="empty">لا يوجد نشاط</div>'}</div>
+        <div class="card" style="margin-bottom:14px"><div class="ctit">${ico.ppl}توزيع على الجهات</div>
+          ${Object.entries(AGS).map(([k,ag]) => {
+            const tot=ALL_ITEMS.filter(i=>i.agency===k).length;
+            const w2=ALL_ITEMS.filter(i=>i.agency===k&&i.status==='pending').length;
+            const rd2=ALL_ITEMS.filter(i=>i.agency===k&&i.status==='uploaded').length;
+            const ap2=ALL_ITEMS.filter(i=>i.agency===k&&i.status==='approved').length;
+            return `<div style="padding:8px 0;border-bottom:1px solid var(--bd);font-size:12px;display:flex;align-items:center;gap:6px">${ag.icon}<span style="flex:1;font-weight:600">${ag.name}</span><span class="bdg bs">${tot}</span><span class="bdg bp">${w2}</span><span class="bdg bu">${rd2}</span><span class="bdg ba">${ap2}</span></div>`;
+          }).join('')}
+        </div>
+        <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+          ${ALL_LOGS.slice(0,8).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg}</div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
+        </div>
       </div>
     </div>`;
 }
 window.render_c_home = render_c_home;
 
-function render_c_crit(){
-  document.getElementById('c-crit').innerHTML=`
+function render_c_crit() {
+  document.getElementById('c-crit').innerHTML = `
     <div class="ph"><div class="pht"><h1>المعايير والإجراءات</h1><p>8 معايير — 98 إجراء</p></div></div>
     <div class="cg">${CRITERIA.map((c,i)=>`<div class="cc" onclick="cSD(${i})"><h4>معيار ${ORD[i]}: ${c.title}</h4><div class="meta">${c.items.length} إجراء — أُرسل ${ALL_ITEMS.filter(x=>x.crit_idx===i).length}</div>${c.items.slice(0,3).map(it=>`<span class="chip">${it}</span>`).join('')}${c.items.length>3?`<span class="chip">+${c.items.length-3}</span>`:''}</div>`).join('')}</div>
     <div id="cd" style="display:none" class="card"><div class="ctit" id="cd-t"></div><div id="cd-b"></div></div>`;
 }
 window.render_c_crit = render_c_crit;
-function cSD(i){const c=CRITERIA[i];document.getElementById('cd-t').textContent=`معيار ${ORD[i]}: ${c.title}`;document.getElementById('cd-b').innerHTML=c.items.map((it,j)=>`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--bd)"><div style="width:22px;height:22px;border-radius:50%;background:#f0ebf8;color:#6b3fa0;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${j+1}</div><span style="font-size:13px">${it}</span></div>`).join('');const d=document.getElementById('cd');d.style.display='block';d.scrollIntoView({behavior:'smooth',block:'nearest'});}
 
-function render_c_wait(){
+function cSD(i) {
+  const c=CRITERIA[i];
+  document.getElementById('cd-t').textContent=`معيار ${ORD[i]}: ${c.title}`;
+  document.getElementById('cd-b').innerHTML=c.items.map((it,j)=>`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--bd)"><div style="width:22px;height:22px;border-radius:50%;background:#f0ebf8;color:#6b3fa0;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${j+1}</div><span style="font-size:13px">${it}</span></div>`).join('');
+  const d=document.getElementById('cd'); d.style.display='block'; d.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function render_c_wait() {
   const items=ALL_ITEMS.filter(i=>i.status==='pending');
   document.getElementById('c-wait').innerHTML=`
-    <div class="ph"><div class="pht"><h1>انتظار استجابة الجهات</h1><p>إجراءات مرسلة تنتظر رفع المستند</p></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_wait();updateBadges();toast('تم التحديث')})">🔄</button></div>
-    ${items.length?items.map(it=>`<div class="ic"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title} ← ${it.agency_name}</div></div><span class="bdg bp">⏳ انتظار</span></div><div class="notif ni">📝 ملاحظاتنا: ${it.committee_note}</div>${it.committee_file?`<div class="notif nok">📎 ${it.committee_file}</div>`:''}<div style="font-size:11px;color:var(--mu)">أُرسل: ${it.sent_at}</div></div>`).join(''):'<div class="card"><div class="empty">✓ لا توجد إجراءات تنتظر</div></div>'}`;
+    <div class="ph"><div class="pht"><h1>انتظار استجابة الجهات</h1></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_wait();updateBadges();toast('تم التحديث')})">🔄</button></div>
+    ${items.length ? items.map(it=>`<div class="ic"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title} ← ${it.agency_name}</div></div><span class="bdg bp">⏳ انتظار</span></div><div class="notif ni">📝 ${it.committee_note}</div>${it.committee_file?`<div class="notif nok">📎 ${it.committee_file}</div>`:''} <div style="font-size:11px;color:var(--mu)">أُرسل: ${it.sent_at}</div></div>`).join('') : '<div class="card"><div class="empty">✓ لا توجد إجراءات تنتظر</div></div>'}`;
 }
 window.render_c_wait = render_c_wait;
 
-function render_c_appr(){
+function render_c_appr() {
   const items=ALL_ITEMS.filter(i=>i.status==='uploaded');
   updateBadges();
   document.getElementById('c-appr').innerHTML=`
     <div class="ph"><div class="pht"><h1>جاهز للاعتماد</h1><p>الجهة رفعت المستند — بانتظار قرارك</p></div>
     <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="cApAll()">✅ اعتماد الكل</button><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_appr();updateBadges()})">🔄</button></div></div>
-    ${items.length?items.map(it=>`<div class="ic new">
+    ${items.length ? items.map(it=>`<div class="ic new">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div><div class="sub" style="margin-top:3px">${AGS[it.agency]?.icon||''} ${it.agency_name}</div></div><span class="bdg bu">📋 رُفع المستند</span></div>
       ${it.committee_note?`<div class="notif ni">📝 ملاحظاتنا: ${it.committee_note}</div>`:''}
-      ${it.agency_file_note?`<div class="notif nok">📎 مستند الجهة: ${it.agency_file_note} <span style="color:var(--mu);font-size:10px">${fmtDate(it.agency_uploaded_at)}</span></div>`:''}
-      <div class="fg"><label class="fl">ملاحظة الاعتماد/الإرجاع (اختياري)</label><textarea class="fc" id="fn-${it.id}" placeholder="ملاحظة للجهة..."></textarea></div>
+      ${it.agency_file_note?`<div class="notif nok">📎 ${it.agency_file_note} <span style="color:var(--mu);font-size:10px">${fmtDate(it.agency_uploaded_at)}</span></div>`:''}
+      <div class="fg"><label class="fl">ملاحظة (اختياري)</label><textarea class="fc" id="fn-${it.id}" placeholder="ملاحظة للجهة..."></textarea></div>
       <div style="display:flex;gap:8px"><button class="btn btn-ok btn-sm" onclick="cDecide('${it.id}','approved')">✅ اعتماد</button><button class="btn btn-er btn-sm" onclick="cDecide('${it.id}','rejected')">↩ إرجاع</button></div>
-    </div>`).join(''):'<div class="card"><div class="empty">لا توجد إجراءات جاهزة للاعتماد</div></div>'}`;
+    </div>`).join('') : '<div class="card"><div class="empty">لا توجد إجراءات جاهزة للاعتماد</div></div>'}`;
 }
 window.render_c_appr = render_c_appr;
 
-async function cDecide(id,status){
-  const note=document.getElementById('fn-'+id)?.value.trim()||'';
-  const it=ALL_ITEMS.find(i=>i.id===id);
-  try{
-    loading(true,'جاري حفظ القرار...');
-    await dbUpdateItem(id,{status,finalNote:note,decidedAt:new Date().toLocaleString('ar-SA')});
-    await sb.post('activity_log', {msg:`${status==='approved'?'اعتماد':'إرجاع'} إجراء "${it?.proc}" (${it?.agency_name})`, actor:'لجنة المتابعة'});
-    await loadAll();loading(false);
-    render_c_appr();render_c_home();
-    toast(status==='approved'?'✅ تم الاعتماد':'↩ تم الإرجاع',status==='approved');
-  }catch(e){loading(false);toast('❗ فشل: '+e.message);}
+async function cDecide(id, status) {
+  const note = document.getElementById('fn-'+id)?.value.trim()||'';
+  const it = ALL_ITEMS.find(i=>i.id===id);
+  try {
+    loading(true, 'جاري حفظ القرار...');
+    await sbPatch('procedures', id, {status, final_note:note, decided_at:new Date().toISOString()});
+    await sbPost('activity_log', {msg:`${status==='approved'?'اعتماد':'إرجاع'} إجراء "${it?.proc}" (${it?.agency_name})`, actor:'لجنة المتابعة'});
+    await loadAll(); loading(false);
+    render_c_appr(); render_c_home();
+    toast(status==='approved'?'✅ تم الاعتماد':'↩ تم الإرجاع', status==='approved');
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
 }
 
-async function cApAll(){
+async function cApAll() {
   const items=ALL_ITEMS.filter(i=>i.status==='uploaded');
-  if(!items.length){toast('لا توجد إجراءات');return;}
-  if(!confirm(`اعتماد الكل (${items.length})؟`))return;
-  loading(true,'جاري الاعتماد...');
-  try{
+  if(!items.length) { toast('لا توجد إجراءات'); return; }
+  if(!confirm(`اعتماد الكل (${items.length})؟`)) return;
+  loading(true, 'جاري الاعتماد...');
+  try {
     const now=new Date().toISOString();
-    for(const it of items){await dbUpdateItem(it.id,{status:'approved',finalNote:'',decidedAt:now});}
-    await sb.post('activity_log', {msg:`اعتماد دفعي لـ ${items.length} إجراء`, actor:'لجنة المتابعة'});
-    await loadAll();loading(false);
-    render_c_appr();render_c_home();toast(`✅ اعتماد ${items.length} إجراء`,true);
-  }catch(e){loading(false);toast('❗ فشل: '+e.message);}
+    await Promise.all(items.map(it=>sbPatch('procedures', it.id, {status:'approved', final_note:'', decided_at:now})));
+    await sbPost('activity_log', {msg:`اعتماد دفعي لـ ${items.length} إجراء`, actor:'لجنة المتابعة'});
+    await loadAll(); loading(false);
+    render_c_appr(); render_c_home();
+    toast('✅ اعتماد '+items.length+' إجراء', true);
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
 }
 
-function render_c_all(){
+function render_c_all() {
   const fa=document.getElementById('ca-a')?.value||'';
   const fs=document.getElementById('ca-s')?.value||'';
   let items=[...ALL_ITEMS];
-  if(fa)items=items.filter(i=>i.agency===fa);
-  if(fs)items=items.filter(i=>i.status===fs);
+  if(fa) items=items.filter(i=>i.agency===fa);
+  if(fs) items=items.filter(i=>i.status===fs);
   document.getElementById('c-all').innerHTML=`
     <div class="ph"><div class="pht"><h1>جميع الإجراءات</h1></div><button class="btn btn-g btn-sm" onclick="cExp()">⬇ CSV</button></div>
     <div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap">
-      <select class="fc" style="width:auto" id="ca-a" onchange="render_c_all()"><option value="">جميع الجهات</option><option value="academic">📚 الشؤون التعليمية</option><option value="main">🏫 وكالة الجامعة</option><option value="postgrad">🎓 الدراسات العليا</option></select>
+      <select class="fc" style="width:auto" id="ca-a" onchange="render_c_all()"><option value="">جميع الجهات</option><option value="academic">📚</option><option value="main">🏫</option><option value="postgrad">🎓</option></select>
       <select class="fc" style="width:auto" id="ca-s" onchange="render_c_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
     </div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
-    ${items.length?items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join(''):`<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>`}
+    ${items.length ? items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>'}
     </tbody></table></div></div>`;
 }
 window.render_c_all = render_c_all;
 
-async function cDel(id){
-  if(!confirm('حذف هذا الإجراء نهائياً من قاعدة البيانات؟'))return;
-  try{loading(true,'جاري الحذف...');await dbDeleteItem(id);await loadAll();loading(false);render_c_all();render_c_home();toast('تم الحذف');}
-  catch(e){loading(false);toast('❗ فشل الحذف: '+e.message);}
+async function cDel(id) {
+  if(!confirm('حذف هذا الإجراء نهائياً؟')) return;
+  try { loading(true); await sbDelete('procedures', id); await loadAll(); loading(false); render_c_all(); render_c_home(); toast('تم الحذف'); }
+  catch(e) { loading(false); toast('❗ '+e.message); }
 }
 
-function cExp(){
-  if(!ALL_ITEMS.length){toast('لا توجد بيانات');return;}
+function cExp() {
+  if(!ALL_ITEMS.length) { toast('لا توجد بيانات'); return; }
   const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
-  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',it.decided_at?fmtDate(it.decided_at):'']);
-  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='تقرير_الجودة.csv';a.click();toast('✓ تم التصدير',true);
+  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',fmtDate(it.decided_at)]);
+  const NL = String.fromCharCode(10);
+  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join(NL);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download='تقرير_الجودة.csv'; a.click();
+  toast('✓ تم التصدير', true);
 }
 
-function render_c_log(){
-  document.getElementById('c-log').innerHTML=`<div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>محفوظ في Supabase ☁</p></div></div><div class="card">${ALL_LOGS.length?ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join(''):'<div class="empty">لا يوجد نشاط</div>'}</div>`;
+function render_c_log() {
+  document.getElementById('c-log').innerHTML=`
+    <div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>محفوظ في Supabase ☁</p></div></div>
+    <div class="card">${ALL_LOGS.length ? ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') : '<div class="empty">لا يوجد نشاط</div>'}</div>`;
 }
 window.render_c_log = render_c_log;
 
-// ══════════════════════════════
-// AGENCY
-// ══════════════════════════════
-function buildAgency(){
-  const ag=AGS[CU.agency];
+// ═══════════════════════════════════════════
+//  ② AGENCY
+// ═══════════════════════════════════════════
+function buildAgency() {
+  const ag = AGS[CU.agency];
   document.getElementById('sidebar').innerHTML=`
     <div class="sbg">الرئيسية</div>
     <div class="sbi active" onclick="sbAct(this);showScreen('ag-home');render_ag_home()">${ico.grid}نظرة عامة</div>
@@ -588,35 +653,36 @@ function buildAgency(){
     <div class="screen" id="ag-done"></div>
     <div class="screen" id="ag-dec"></div>`;
 
-  render_ag_home();updateBadges();
+  render_ag_home(); updateBadges();
 }
 
-function myItems(f){return ALL_ITEMS.filter(i=>i.agency===CU.agency&&(!f||f(i)));}
+function mine(f) { return ALL_ITEMS.filter(i=>i.agency===CU.agency&&(!f||f(i))); }
 
-function render_ag_home(){
-  const ag=AGS[CU.agency];updateBadges();
-  const items=myItems();
+function render_ag_home() {
+  const ag=AGS[CU.agency]; const items=mine(); updateBadges();
   document.getElementById('ag-home').innerHTML=`
-    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>${ag?.name} — الإجراءات المسندة — Supabase ☁</p></div></div>
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>${ag?.name} — Supabase ☁</p></div></div>
     <div class="sr">
-      <div class="sc" style="border-top:3px solid #dc2626"><div class="ico">📬</div><div class="num">${myItems(i=>i.status==='pending').length}</div><div class="lbl">تنتظر رفع المستند</div></div>
+      <div class="sc" style="border-top:3px solid #dc2626"><div class="ico">📬</div><div class="num">${mine(i=>i.status==='pending').length}</div><div class="lbl">تنتظر رفع المستند</div></div>
       <div class="sc" style="border-top:3px solid ${ag?.color||'#6b3fa0'}"><div class="ico">📁</div><div class="num">${items.length}</div><div class="lbl">إجمالي المستلمة</div></div>
-      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${myItems(i=>i.status==='approved').length}</div><div class="lbl">معتمد</div></div>
-      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">↩</div><div class="num">${myItems(i=>i.status==='rejected').length}</div><div class="lbl">مُرجع</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${mine(i=>i.status==='approved').length}</div><div class="lbl">معتمد</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">↩</div><div class="num">${mine(i=>i.status==='rejected').length}</div><div class="lbl">مُرجع</div></div>
     </div>
-    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>${ALL_LOGS.slice(0,10).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('')||'<div class="empty">لا يوجد نشاط</div>'}</div>`;
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.slice(0,10).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
+    </div>`;
 }
 window.render_ag_home = render_ag_home;
 
-function render_ag_inbox(){
-  const items=myItems(i=>i.status==='pending');updateBadges();
+function render_ag_inbox() {
+  const items=mine(i=>i.status==='pending'); updateBadges();
   document.getElementById('ag-inbox').innerHTML=`
-    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1><p>مُرسلة من لجنة المتابعة — المطلوب رفع المستند فقط</p></div>
-    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_inbox();updateBadges();toast('تم التحديث')})">🔄 تحديث</button></div>
+    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1><p>المطلوب رفع المستند فقط — الاعتماد من اللجنة</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_inbox();updateBadges();toast('تم التحديث')})">🔄</button></div>
     <div class="notif nw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>دوركم <strong>رفع المستند فقط</strong> — الاعتماد والإرجاع من صلاحيات لجنة المتابعة.</div>
-    ${items.length?items.map(it=>`<div class="ic new" id="ic-${it.id}">
+    ${items.length ? items.map(it=>`<div class="ic new" id="ic-${it.id}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div><span class="bdg bp">🔺 يتطلب رفع مستند</span></div>
-      <div class="notif ni">📝 <strong>ملاحظات لجنة المتابعة:</strong> ${it.committee_note}</div>
+      <div class="notif ni">📝 <strong>ملاحظات اللجنة:</strong> ${it.committee_note}</div>
       ${it.committee_file?`<div class="notif nok">📎 مستند مرجعي: ${it.committee_file}</div>`:''}
       <div style="font-size:11px;color:var(--mu);margin-bottom:12px">أُرسل: ${it.sent_at}</div>
       <div class="fg"><label class="fl">⬆ ارفع المستند المطلوب *</label>
@@ -624,55 +690,57 @@ function render_ag_inbox(){
         <input type="file" id="fi-${it.id}" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="agMF(this,'${it.id}')">
       </div>
       <button class="btn btn-p btn-sm" onclick="agSub('${it.id}')">رفع المستند ←</button>
-    </div>`).join(''):'<div class="card"><div class="empty">✓ لا توجد إجراءات معلقة</div></div>'}`;
+    </div>`).join('') : '<div class="card"><div class="empty">✓ لا توجد إجراءات معلقة</div></div>'}`;
 }
 window.render_ag_inbox = render_ag_inbox;
 
-function agMF(inp,id){if(inp.files[0]){const z=document.getElementById('uz-'+id);z.innerHTML='✅ '+inp.files[0].name;z.classList.add('done');}}
-
-async function agSub(id){
-  const fi=document.getElementById('fi-'+id);
-  if(!fi||!fi.files[0]){toast('❗ يرجى اختيار ملف أولاً');return;}
-  const it=ALL_ITEMS.find(i=>i.id===id);
-  try{
-    loading(true,'جاري رفع المستند...');
-    await dbUpdateItem(id,{status:'uploaded',agencyFileNote:fi.files[0].name,agencyUploadedAt:new Date().toLocaleString('ar-SA')});
-    await sb.post('activity_log', {msg:`رفع مستند للإجراء "${it?.proc}"`, actor:CU.name});
-    await loadAll();loading(false);
-    render_ag_inbox();render_ag_home();
-    toast('✅ تم رفع المستند — في انتظار قرار لجنة المتابعة',true);
-  }catch(e){loading(false);toast('❗ فشل: '+e.message);}
+function agMF(inp, id) {
+  if(inp.files[0]) { const z=document.getElementById('uz-'+id); z.innerHTML='✅ '+inp.files[0].name; z.classList.add('done'); }
 }
 
-function render_ag_done(){
-  const items=myItems(i=>i.agency_file_note&&i.agency_file_note!=='');
+async function agSub(id) {
+  const fi=document.getElementById('fi-'+id);
+  if(!fi||!fi.files[0]) { toast('❗ يرجى اختيار ملف أولاً'); return; }
+  const it=ALL_ITEMS.find(i=>i.id===id);
+  try {
+    loading(true, 'جاري رفع المستند...');
+    await sbPatch('procedures', id, {status:'uploaded', agency_file_note:fi.files[0].name, agency_uploaded_at:new Date().toISOString()});
+    await sbPost('activity_log', {msg:`رفع مستند للإجراء "${it?.proc}"`, actor:CU.name});
+    await loadAll(); loading(false);
+    render_ag_inbox(); render_ag_home();
+    toast('✅ تم رفع المستند — في انتظار قرار اللجنة', true);
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
+}
+
+function render_ag_done() {
+  const items=mine(i=>i.agency_file_note&&i.agency_file_note!=='');
   const lb={uploaded:'bu',approved:'ba',rejected:'br'};
   const tx={uploaded:'⏳ انتظار اللجنة',approved:'✅ معتمد',rejected:'↩ مُرجع'};
   document.getElementById('ag-done').innerHTML=`
     <div class="ph"><div class="pht"><h1>تم رفع المستند</h1></div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>المعيار</th><th>الإجراء</th><th>المستند</th><th>تاريخ الرفع</th><th>قرار اللجنة</th></tr></thead><tbody>
-    ${items.length?items.map(it=>`<tr><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">📎 ${it.agency_file_note}</td><td style="font-size:11px;color:var(--mu)">${fmtDate(it.agency_uploaded_at)}</td><td><span class="bdg ${lb[it.status]||''}">${tx[it.status]||it.status}</span></td></tr>`).join(''):`<tr><td colspan="5" class="empty">لا يوجد</td></tr>`}
+    ${items.length ? items.map(it=>`<tr><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">📎 ${it.agency_file_note}</td><td style="font-size:11px;color:var(--mu)">${fmtDate(it.agency_uploaded_at)}</td><td><span class="bdg ${lb[it.status]||''}">${tx[it.status]||it.status}</span></td></tr>`).join('') : '<tr><td colspan="5" class="empty">لا يوجد مستندات مرفوعة</td></tr>'}
     </tbody></table></div></div>`;
 }
 window.render_ag_done = render_ag_done;
 
-function render_ag_dec(){
-  const items=myItems(i=>i.status==='approved'||i.status==='rejected');
+function render_ag_dec() {
+  const items=mine(i=>i.status==='approved'||i.status==='rejected');
   document.getElementById('ag-dec').innerHTML=`
     <div class="ph"><div class="pht"><h1>قرارات لجنة المتابعة</h1></div></div>
-    ${items.length?items.map(it=>`<div class="ic" style="border-right:4px solid ${it.status==='approved'?'var(--ok)':'var(--er)'}">
+    ${items.length ? items.map(it=>`<div class="ic" style="border-right:4px solid ${it.status==='approved'?'var(--ok)':'var(--er)'}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div></div><span class="bdg ${it.status==='approved'?'ba':'br'}">${it.status==='approved'?'✅ معتمد':'↩ مُرجع'}</span></div>
       ${it.agency_file_note?`<div class="notif nok">📎 ${it.agency_file_note}</div>`:''}
       ${it.final_note?`<div class="notif ni">💬 ملاحظة اللجنة: ${it.final_note}</div>`:''}
       <div style="font-size:11px;color:var(--mu)">صدر القرار: ${fmtDate(it.decided_at)}</div>
-    </div>`).join(''):'<div class="card"><div class="empty">لم تصدر قرارات بعد</div></div>'}`;
+    </div>`).join('') : '<div class="card"><div class="empty">لم تصدر قرارات بعد</div></div>'}`;
 }
 window.render_ag_dec = render_ag_dec;
 
-// ══════════════════════════════
-// ADMIN
-// ══════════════════════════════
-function buildAdmin(){
+// ═══════════════════════════════════════════
+//  ③ ADMIN
+// ═══════════════════════════════════════════
+function buildAdmin() {
   document.getElementById('sidebar').innerHTML=`
     <div class="sbg">التقارير</div>
     <div class="sbi active" onclick="sbAct(this);showScreen('adm-h');render_adm_h()">${ico.grid}الملخص الشامل</div>
@@ -702,11 +770,11 @@ function buildAdmin(){
   render_adm_h();
 }
 
-function render_adm_h(){
-  const t=ALL_ITEMS.length,p=ALL_ITEMS.filter(i=>i.status==='pending').length;
-  const u=ALL_ITEMS.filter(i=>i.status==='uploaded').length,a=ALL_ITEMS.filter(i=>i.status==='approved').length;
+function render_adm_h() {
+  const t=ALL_ITEMS.length, p=ALL_ITEMS.filter(i=>i.status==='pending').length;
+  const u=ALL_ITEMS.filter(i=>i.status==='uploaded').length, a=ALL_ITEMS.filter(i=>i.status==='approved').length;
   document.getElementById('adm-h').innerHTML=`
-    <div class="ph"><div class="pht"><h1>الملخص الشامل</h1><p>إحصائيات النظام — Supabase ☁</p></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_h();toast('تم التحديث')})">🔄</button></div>
+    <div class="ph"><div class="pht"><h1>الملخص الشامل</h1><p>Supabase ☁</p></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_h();toast('تم التحديث')})">🔄</button></div>
     <div class="sr">
       <div class="sc" style="border-top:3px solid #374151"><div class="ico">📊</div><div class="num">${t}</div><div class="lbl">إجمالي الإجراءات</div></div>
       <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${p}</div><div class="lbl">انتظار الجهة</div></div>
@@ -714,19 +782,34 @@ function render_adm_h(){
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${a}</div><div class="lbl">معتمد</div></div>
     </div>
     <div class="g2">
-      <div class="card"><div class="ctit">${ico.ppl}الجهات</div>${Object.entries(AGS).map(([k,ag])=>{const ags=ALL_ITEMS.filter(i=>i.agency===k);const ap2=ags.filter(i=>i.status==='approved').length;const pct=ags.length?Math.round(ap2/ags.length*100):0;return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px"><span style="font-weight:700">${ag.icon} ${ag.name}</span><span style="display:flex;gap:4px"><span class="bdg bs">${ags.length}</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length}</span><span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length}</span><span class="bdg ba">${ap2}</span></span></div><div class="prog"><div class="pf" style="width:${pct}%;background:${ag.color}"></div></div></div>`;}).join('')}</div>
-      <div class="card"><div class="ctit">${ico.bar}المعايير</div>${CRITERIA.map((c,i)=>{const cnt=ALL_ITEMS.filter(x=>x.crit_idx===i).length;const pct=Math.round(cnt/c.items.length*100);return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;}).join('')}</div>
+      <div class="card"><div class="ctit">${ico.ppl}الجهات</div>
+        ${Object.entries(AGS).map(([k,ag])=>{
+          const ags=ALL_ITEMS.filter(i=>i.agency===k);
+          const ap2=ags.filter(i=>i.status==='approved').length;
+          const pct=ags.length?Math.round(ap2/ags.length*100):0;
+          return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px"><span style="font-weight:700">${ag.icon} ${ag.name}</span><span style="display:flex;gap:4px"><span class="bdg bs">${ags.length}</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length}</span><span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length}</span><span class="bdg ba">${ap2}</span></span></div><div class="prog"><div class="pf" style="width:${pct}%;background:${ag.color}"></div></div></div>`;
+        }).join('')}
+      </div>
+      <div class="card"><div class="ctit">${ico.bar}المعايير</div>
+        ${CRITERIA.map((c,i)=>{
+          const cnt=ALL_ITEMS.filter(x=>x.crit_idx===i).length;
+          const pct=Math.round(cnt/c.items.length*100);
+          return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
+        }).join('')}
+      </div>
     </div>
-    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>${ALL_LOGS.slice(0,15).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('')||'<div class="empty">لا يوجد</div>'}</div>`;
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.slice(0,15).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد</div>'}
+    </div>`;
 }
 window.render_adm_h = render_adm_h;
 
-function render_adm_all(){
+function render_adm_all() {
   const fa=document.getElementById('adm-fa')?.value||'';
   const fs=document.getElementById('adm-fs')?.value||'';
   let items=[...ALL_ITEMS];
-  if(fa)items=items.filter(i=>i.agency===fa);
-  if(fs)items=items.filter(i=>i.status===fs);
+  if(fa) items=items.filter(i=>i.agency===fa);
+  if(fs) items=items.filter(i=>i.status===fs);
   document.getElementById('adm-all').innerHTML=`
     <div class="ph"><div class="pht"><h1>جميع الإجراءات</h1></div><div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="admExp()">⬇ CSV</button><button class="btn btn-g btn-sm" onclick="admPrint()">🖨</button></div></div>
     <div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -735,90 +818,124 @@ function render_adm_all(){
       <button class="btn btn-er btn-sm" onclick="admDelF()">حذف المُصفّى</button>
     </div></div>
     <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
-    ${items.length?items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join(''):`<tr><td colspan="10" class="empty">لا يوجد</td></tr>`}
+    ${items.length ? items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="10" class="empty">لا يوجد</td></tr>'}
     </tbody></table></div></div>`;
 }
 window.render_adm_all = render_adm_all;
 
-async function admD1(id){if(!confirm('حذف؟'))return;try{loading(true);await dbDeleteItem(id);await loadAll();loading(false);render_adm_all();render_adm_h();toast('تم الحذف');}catch(e){loading(false);toast('❗ '+e.message);}}
-
-async function admDelF(){
-  const fa=document.getElementById('adm-fa')?.value,fs=document.getElementById('adm-fs')?.value;
-  if(!fa&&!fs){toast('حدد تصفية أولاً');return;}
-  let items=ALL_ITEMS.filter(i=>(fa?i.agency===fa:true)&&(fs?i.status===fs:true));
-  if(!items.length){toast('لا توجد عناصر');return;}
-  if(!confirm(`حذف ${items.length} إجراء نهائياً؟`))return;
-  loading(true,'جاري الحذف...');
-  try{for(const it of items){await dbDeleteItem(it.id);}await loadAll();loading(false);render_adm_all();render_adm_h();toast(`تم حذف ${items.length} إجراء`);}
-  catch(e){loading(false);toast('❗ '+e.message);}
+async function admD1(id) {
+  if(!confirm('حذف؟')) return;
+  try { loading(true); await sbDelete('procedures',id); await loadAll(); loading(false); render_adm_all(); render_adm_h(); toast('تم الحذف'); }
+  catch(e) { loading(false); toast('❗ '+e.message); }
 }
 
-function admExp(){
-  if(!ALL_ITEMS.length){toast('لا توجد بيانات');return;}
+async function admDelF() {
+  const fa=document.getElementById('adm-fa')?.value, fs=document.getElementById('adm-fs')?.value;
+  if(!fa&&!fs) { toast('حدد تصفية أولاً'); return; }
+  let items=ALL_ITEMS.filter(i=>(fa?i.agency===fa:true)&&(fs?i.status===fs:true));
+  if(!items.length) { toast('لا توجد عناصر'); return; }
+  if(!confirm('حذف '+items.length+' إجراء نهائياً؟')) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it=>sbDelete('procedures',it.id)));
+    await loadAll(); loading(false); render_adm_all(); render_adm_h();
+    toast('تم حذف '+items.length+' إجراء');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+function admExp() {
+  if(!ALL_ITEMS.length) { toast('لا توجد بيانات'); return; }
   const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
   const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',fmtDate(it.decided_at)]);
-  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='تقرير_الجودة.csv';a.click();toast('✓ تم التصدير',true);
-}
-function admPrint(){
-  const w=window.open('','_blank');
-  w.document.write(`<html dir="rtl"><head><meta charset="UTF-8"><title>سجل النشاط</title><style>body{font-family:Arial;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#4a2878;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}</style></head><body><h2>سجل النشاط — نظام متابعة أعمال الجودة</h2><table><thead><tr><th>#</th><th>التاريخ</th><th>الجهة</th><th>النشاط</th></tr></thead><tbody>${ALL_LOGS.map((l,i)=>`<tr><td>${i+1}</td><td>${fmtDate(l.created_at)}</td><td>${l.actor}</td><td>${l.msg}</td></tr>`).join('')}</tbody></table></body></html>`);
-  w.document.close();w.print();
+  const NL=String.fromCharCode(10);
+  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join(NL);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download='تقرير_الجودة.csv'; a.click(); toast('✓ تم التصدير',true);
 }
 
-function render_adm_ag(){
-  document.getElementById('adm-ag').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير الجهات</h1></div></div>${Object.entries(AGS).map(([k,ag])=>{const ags=ALL_ITEMS.filter(i=>i.agency===k);return `<div class="card" style="border-right:4px solid ${ag.color}"><div class="ctit" style="color:${ag.color}">${ag.icon} ${ag.name}</div><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><span class="bdg bs">${ags.length} إجمالي</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length} انتظار</span><span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length} جاهز</span><span class="bdg ba">${ags.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg br">${ags.filter(i=>i.status==='rejected').length} مُرجع</span></div>${ags.length?`<div class="tw"><table class="tbl" style="font-size:11px"><thead><tr><th>المعيار</th><th>الإجراء</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th></tr></thead><tbody>${ags.map(it=>`<tr><td>${it.crit_title}</td><td>${it.proc}</td><td style="color:var(--mu)">${it.committee_note||'—'}</td><td>${it.agency_file_note?'📎 '+it.agency_file_note:'لم يُرفع'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">لا توجد إجراءات</div>'}</div>`;}).join('')}`;
+function admPrint() {
+  const w=window.open('','_blank');
+  w.document.write('<html dir="rtl"><head><meta charset="UTF-8"><title>سجل النشاط</title><style>body{font-family:Arial;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#4a2878;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}</style></head><body><h2>سجل النشاط — نظام متابعة أعمال الجودة</h2><table><thead><tr><th>#</th><th>التاريخ</th><th>الجهة</th><th>النشاط</th></tr></thead><tbody>'+ALL_LOGS.map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDate(l.created_at)+'</td><td>'+l.actor+'</td><td>'+l.msg+'</td></tr>').join('')+'</tbody></table></body></html>');
+  w.document.close(); w.print();
+}
+
+function render_adm_ag() {
+  document.getElementById('adm-ag').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير الجهات</h1></div></div>
+    ${Object.entries(AGS).map(([k,ag])=>{
+      const ags=ALL_ITEMS.filter(i=>i.agency===k);
+      return `<div class="card" style="border-right:4px solid ${ag.color}"><div class="ctit" style="color:${ag.color}">${ag.icon} ${ag.name}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span class="bdg bs">${ags.length} إجمالي</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length} انتظار</span>
+        <span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length} جاهز</span><span class="bdg ba">${ags.filter(i=>i.status==='approved').length} معتمد</span>
+        <span class="bdg br">${ags.filter(i=>i.status==='rejected').length} مُرجع</span>
+      </div>
+      ${ags.length ? `<div class="tw"><table class="tbl" style="font-size:11px"><thead><tr><th>المعيار</th><th>الإجراء</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th></tr></thead><tbody>
+        ${ags.map(it=>`<tr><td>${it.crit_title}</td><td>${it.proc}</td><td style="color:var(--mu)">${it.committee_note||'—'}</td><td>${it.agency_file_note?'📎 '+it.agency_file_note:'لم يُرفع'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">لا توجد إجراءات</div>'}
+      </div>`;
+    }).join('')}`;
 }
 window.render_adm_ag = render_adm_ag;
 
-function render_adm_cr(){
-  document.getElementById('adm-cr').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير المعايير</h1></div></div><div class="card">${CRITERIA.map((c,i)=>{const sent=ALL_ITEMS.filter(x=>x.crit_idx===i);const pct=Math.round(sent.length/c.items.length*100);return `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:5px"><span>${c.title}</span><span style="display:flex;gap:5px"><span class="bdg bs">${sent.length}/${c.items.length}</span><span class="bdg ba">${sent.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg bp">${sent.filter(i=>i.status==='pending').length} انتظار</span></span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;}).join('')}</div>`;
+function render_adm_cr() {
+  document.getElementById('adm-cr').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير المعايير</h1></div></div><div class="card">
+    ${CRITERIA.map((c,i)=>{
+      const sent=ALL_ITEMS.filter(x=>x.crit_idx===i);
+      const pct=Math.round(sent.length/c.items.length*100);
+      return `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:5px"><span>${c.title}</span><span style="display:flex;gap:5px"><span class="bdg bs">${sent.length}/${c.items.length}</span><span class="bdg ba">${sent.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg bp">${sent.filter(i=>i.status==='pending').length} انتظار</span></span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
+    }).join('')}
+  </div>`;
 }
 window.render_adm_cr = render_adm_cr;
 
-function render_adm_log(){
-  document.getElementById('adm-log').innerHTML=`<div class="ph"><div class="pht"><h1>السجل الكامل</h1><p>محفوظ في Supabase ☁</p></div><button class="btn btn-er btn-sm" onclick="admClrLog()">مسح السجل</button></div><div class="card">${ALL_LOGS.length?ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join(''):'<div class="empty">لا يوجد</div>'}</div>`;
+function render_adm_log() {
+  document.getElementById('adm-log').innerHTML=`
+    <div class="ph"><div class="pht"><h1>السجل الكامل</h1><p>Supabase ☁</p></div>
+    <button class="btn btn-er btn-sm" onclick="admClrLog()">مسح السجل</button></div>
+    <div class="card">${ALL_LOGS.length ? ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') : '<div class="empty">لا يوجد</div>'}</div>`;
 }
 window.render_adm_log = render_adm_log;
 
-async function admClrLog(){
-  if(!confirm('مسح كامل سجل النشاط؟'))return;
+async function admClrLog() {
+  if(!confirm('مسح كامل سجل النشاط؟')) return;
   loading(true);
-  try{
-    // Delete all log entries
-    const r=await fetch(`${SB_URL}/rest/v1/activity_log?id=gt.0`,{method:'DELETE',headers:sb.headers});
-    await loadAll();loading(false);render_adm_log();toast('تم مسح السجل');
-  }catch(e){loading(false);toast('❗ '+e.message);}
-}
-
-async function admRstAll(){
-  if(!confirm('⚠ حذف كل الإجراءات والسجل نهائياً من Supabase؟'))return;
-  loading(true,'جاري الحذف الكامل...');
-  try{
-    await fetch(`${SB_URL}/rest/v1/procedures?created_at=gte.2000-01-01`,{method:'DELETE',headers:sb.headers});
-    await fetch(`${SB_URL}/rest/v1/activity_log?id=gt.0`,{method:'DELETE',headers:sb.headers});
-    await loadAll();loading(false);render_adm_h();toast('تم إعادة الضبط الكامل');
-  }catch(e){loading(false);toast('❗ '+e.message);}
-}
-
-async function admRstItems(){
-  if(!confirm('حذف الإجراءات مع الاحتفاظ بالسجل؟'))return;
-  loading(true);
-  try{
-    await fetch(`${SB_URL}/rest/v1/procedures?created_at=gte.2000-01-01`,{method:'DELETE',headers:sb.headers});
-    await loadAll();loading(false);render_adm_h();toast('تم حذف الإجراءات');
-  }catch(e){loading(false);toast('❗ '+e.message);}
-}
-
-// ══ INIT ══
-window.addEventListener('load', async () => {
-  loading(true,'جاري تحميل البيانات...');
   try {
-    await loadAll();
+    await sbDeleteAll('activity_log');
+    await loadAll(); loading(false); render_adm_log(); toast('تم مسح السجل');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admRstAll() {
+  if(!confirm('⚠ حذف كل الإجراءات والسجل نهائياً من Supabase؟')) return;
+  loading(true, 'جاري الحذف الكامل...');
+  try {
+    await sbDeleteAll('procedures');
+    await sbDeleteAll('activity_log');
+    await loadAll(); loading(false); render_adm_h(); toast('تم إعادة الضبط الكامل');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admRstItems() {
+  if(!confirm('حذف الإجراءات مع الاحتفاظ بالسجل؟')) return;
+  loading(true);
+  try {
+    await sbDeleteAll('procedures');
+    await loadAll(); loading(false); render_adm_h(); toast('تم حذف الإجراءات');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', async () => {
+  loading(true, 'جاري التحقق من قاعدة البيانات...');
+  try {
+    await sbGet('procedures', 'select=id&limit=1');
     loading(false);
   } catch(e) {
     loading(false);
-    toast('⚠ خطأ في تحميل البيانات');
+    document.getElementById('db-setup').classList.add('show');
   }
 });
 </script>
