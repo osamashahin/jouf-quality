@@ -234,6 +234,15 @@ async function sbDelete(table, id) {
   const r = await fetch(SB_URL+'/rest/v1/'+table+'?id=eq.'+id, {method:'DELETE',headers:SB_H});
   if (!r.ok) throw new Error(await r.text());
 }
+async function sbUpsert(table, data) {
+  const r = await fetch(SB_URL+'/rest/v1/'+table, {
+    method:'POST',
+    headers:{...SB_H,'Prefer':'resolution=merge-duplicates,return=minimal'},
+    body:JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
 async function sbDeleteAll(table) {
   // Delete all rows using a always-true filter
   const r = await fetch(SB_URL+'/rest/v1/'+table+'?id=gte.0', {method:'DELETE',headers:SB_H});
@@ -295,12 +304,34 @@ function loading(show, msg) { const o=document.getElementById('loading-overlay')
 function fmtDate(d) { return d ? new Date(d).toLocaleString('ar-SA') : '—'; }
 
 async function loadAll() {
-  const [items, logs] = await Promise.all([
+  const [items, logs, settings] = await Promise.all([
     sbGet('procedures', 'select=*&order=created_at.desc'),
-    sbGet('activity_log', 'select=*&order=created_at.desc&limit=100')
+    sbGet('activity_log', 'select=*&order=created_at.desc&limit=100'),
+    sbGet('settings', 'select=*')
   ]);
   ALL_ITEMS = items || [];
   ALL_LOGS  = logs  || [];
+  // Apply saved settings (passwords + extra agencies)
+  if (settings && settings.length) {
+    settings.forEach(s => {
+      try {
+        const val = JSON.parse(s.value);
+        if (s.key === 'extra_agencies') {
+          // Restore extra agencies
+          Object.entries(val).forEach(([k, ag]) => {
+            EXTRA_AGENCIES[k] = ag;
+            if (!USERS[k]) {
+              USERS[k] = {pass: ag.pass||'', name: ag.name, role:'agency', agency:k,
+                grad:`linear-gradient(135deg,${ag.color}dd,${ag.color})`};
+            }
+          });
+        } else if (s.key.startsWith('pass_')) {
+          const userId = s.key.replace('pass_', '');
+          if (USERS[userId]) USERS[userId].pass = val.pass;
+        }
+      } catch(e) {}
+    });
+  }
 }
 
 function refreshUI() {
@@ -411,13 +442,15 @@ function buildCommittee() {
     <div class="sbi" onclick="sbAct(this);showScreen('c-log');render_c_log()">${ico.pen}سجل النشاط</div>
     <div class="sbg">الإعدادات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-agencies');render_c_agencies()">${ico.ppl}إدارة الجهات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-clear')" style="color:#dc2626">${ico.trash}مسح جميع الإجراءات</div>`;
+    <div class="sbi" onclick="sbAct(this);showScreen('c-profile');render_c_profile()">${ico.pen}بياناتي وكلمة المرور</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('c-clear');render_c_clear()" style="color:#dc2626">${ico.trash}مسح جميع الإجراءات</div>`;
 
   document.getElementById('mc').innerHTML = `
     <div class="screen active" id="c-home"></div>
     <div class="screen" id="c-crit"></div>
     <div class="screen" id="c-agencies"></div>
     <div class="screen" id="c-clear"></div>
+    <div class="screen" id="c-profile"></div>
     <div class="screen" id="c-send">
       <div class="ph"><div class="pht"><h1>إرسال إجراء</h1><p>اختر المعيار والإجراء والجهة مع ملاحظاتك</p></div></div>
       <div class="card" style="max-width:620px">
@@ -1069,7 +1102,10 @@ function agChangePass() {
   document.getElementById('prof-old').value = '';
   document.getElementById('prof-new').value = '';
   document.getElementById('prof-confirm').value = '';
-  showMsg('✅ تم تغيير كلمة المرور بنجاح — ستُطبق عند تسجيل الدخول القادم', true);
+  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
+  // Save permanently to Supabase
+  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
+    .catch(()=>{});
   sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
 }
 
@@ -1144,6 +1180,61 @@ function render_c_agencies() {
     </div>`;
 }
 window.render_c_agencies = render_c_agencies;
+// ─── Committee Profile ───
+function render_c_profile() {
+  document.getElementById('c-profile').innerHTML = `
+    <div class="ph"><div class="pht"><h1>بياناتي</h1><p>تعديل معلومات حساب عمادة التطوير والجودة</p></div></div>
+    <div class="card" style="max-width:520px">
+      <div class="ctit">${ico.ppl}معلومات الحساب</div>
+      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">اسم المستخدم</span>
+          <strong style="font-family:monospace">${CU.id}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
+          <span style="color:var(--mu)">الجهة</span>
+          <strong>${CU.name}</strong>
+        </div>
+      </div>
+      <div class="ctit" style="margin-top:8px">${ico.pen}تغيير كلمة المرور</div>
+      <div class="fg"><label class="fl">كلمة المرور الحالية *</label><input class="fc" type="password" id="cprof-old" placeholder="أدخل كلمة المرور الحالية"></div>
+      <div class="fg"><label class="fl">كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-new" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)"></div>
+      <div class="fg"><label class="fl">تأكيد كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-confirm" placeholder="أعد كتابة كلمة المرور الجديدة"></div>
+      <div id="cprof-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="cChangePass()">حفظ كلمة المرور الجديدة</button>
+    </div>`;
+}
+window.render_c_profile = render_c_profile;
+
+function cChangePass() {
+  const oldP    = document.getElementById('cprof-old').value;
+  const newP    = document.getElementById('cprof-new').value;
+  const conf    = document.getElementById('cprof-confirm').value;
+  const msg     = document.getElementById('cprof-msg');
+  const showMsg = (text, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=text;
+  };
+  if (!oldP||!newP||!conf)          { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
+  if (USERS[CU.id].pass !== oldP)   { showMsg('❗ كلمة المرور الحالية غير صحيحة', false); return; }
+  if (newP.length < 6)              { showMsg('❗ كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل', false); return; }
+  if (newP !== conf)                 { showMsg('❗ كلمة المرور الجديدة وتأكيدها غير متطابقين', false); return; }
+  if (newP === oldP)                 { showMsg('❗ كلمة المرور الجديدة يجب أن تختلف عن الحالية', false); return; }
+  USERS[CU.id].pass = newP;
+  document.getElementById('cprof-old').value='';
+  document.getElementById('cprof-new').value='';
+  document.getElementById('cprof-confirm').value='';
+  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
+  // Save permanently to Supabase
+  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+  sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
+}
+
+
 
 function addNewAgency() {
   const name  = document.getElementById('nag-name').value.trim();
@@ -1172,8 +1263,15 @@ function addNewAgency() {
   USERS[key] = {pass, name, role:'agency', agency:key, grad};
 
   sbPost('activity_log', {msg:`إضافة جهة جديدة: ${name} (مفتاح: ${key})`, actor:'عمادة التطوير والجودة'});
+  // Save extra agencies permanently to Supabase
+  const agToSave = {};
+  Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+    agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+  });
+  sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+    .catch(()=>{});
 
-  showMsg(`✅ تمت إضافة "${name}" — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
+  showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
   document.getElementById('nag-name').value='';
   document.getElementById('nag-key').value='';
   document.getElementById('nag-pass').value='';
@@ -1195,7 +1293,14 @@ function removeAgency(key) {
   delete USERS[key];
   // Remove their items from DB
   const toDelete = ALL_ITEMS.filter(i=>i.agency===agKey);
-  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(()=>{
+  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(async ()=>{
+    // Update saved extra agencies
+    const agToSave = {};
+    Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+      agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+    });
+    await sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+      .catch(()=>{});
     return loadAll();
   }).then(()=>{
     render_c_agencies();
