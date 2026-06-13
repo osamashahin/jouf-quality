@@ -1236,15 +1236,18 @@ function instReqsHtml(it) {
 
 // ─── الإجراءات الواردة: إجراءات لديها متطلبات لم تُرفع بعد أو أُعيدت للملاحظات ───
 function render_ag_inbox() {
-  // صف لكل متطلب (pending أو returned فقط)
+  // سطر لكل متطلب (pending أو returned فقط)
   const rows = [];
   mine().forEach(it => {
     const reqs = getReqList(it);
     const rs   = getReqStatus(it);
-    const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
-    rs.forEach((r, idx) => {
+    const critLabel = it.inst_crit_num
+      ? `${it.inst_crit_num} — ${it.inst_crit_title}`
+      : it.proc;
+    reqs.forEach((reqText, idx) => {
+      const r = rs[idx] || {status:'pending'};
       if (r.status === 'pending' || r.status === 'returned') {
-        rows.push({it, idx, reqText: reqs[idx]||'—', r, critLabel});
+        rows.push({it, idx, reqText, r, critLabel});
       }
     });
   });
@@ -1261,7 +1264,7 @@ function render_ag_inbox() {
       <tbody>
       ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => `
         <tr style="${r.status==='returned'?'background:#fef2f2':''}">
-          <td style="font-weight:600;font-size:12px">${critLabel}</td>
+          <td style="font-weight:600;font-size:12px;max-width:180px">${critLabel}</td>
           <td style="font-size:12px">${reqText}</td>
           <td>${r.status==='returned'
             ? '<span class="bdg br">↩ معاد للملاحظات</span>'
@@ -1269,9 +1272,9 @@ function render_ag_inbox() {
           <td><button class="btn btn-p btn-sm" onclick="agOpenReq('${it.id}',${idx})">عرض</button></td>
         </tr>
         ${r.status==='returned' && r.committee_note
-          ? `<tr style="background:#fef2f2"><td colspan="4" style="font-size:11px;color:#b91c1c;padding-right:28px">↩ ملاحظة عمادة التطوير والجودة: ${r.committee_note}</td></tr>`
+          ? `<tr style="background:#fef2f2"><td colspan="4" style="font-size:11px;color:#b91c1c;padding-right:12px;padding-bottom:8px">↩ ملاحظة العمادة: ${r.committee_note}</td></tr>`
           : ''}
-      `).join('') : '<tr><td colspan="4" class="empty">✓ لا توجد إجراءات واردة</td></tr>'}
+      `).join('') : '<tr><td colspan="4" class="empty">✓ لا توجد متطلبات واردة</td></tr>'}
       </tbody>
     </table></div></div>`;
 }
@@ -1413,16 +1416,14 @@ function render_ag_track() {
   mine().forEach(it => {
     const reqs = getReqList(it);
     const rs   = getReqStatus(it);
-    const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
-    rs.forEach((r, idx) => {
-      rows.push({it, idx, reqText: reqs[idx]||'—', r, critLabel});
+    const critLabel = it.inst_crit_num
+      ? `${it.inst_crit_num} — ${it.inst_crit_title}`
+      : it.proc;
+    // سطر لكل متطلب — نستخدم reqs (النصوص) كمصدر رئيسي
+    reqs.forEach((reqText, idx) => {
+      const r = rs[idx] || {status:'pending'};
+      rows.push({it, idx, reqText, r, critLabel});
     });
-    // إضافة المتطلبات غير المعرّفة في req_status (لم يُرسل الإجراء بعد / بيانات قديمة)
-    if (!rs.length && getReqList(it).length) {
-      getReqList(it).forEach((reqText, idx) => {
-        rows.push({it, idx, reqText, r:{status:'pending'}, critLabel});
-      });
-    }
   });
 
   document.getElementById('ag-track').innerHTML = `
