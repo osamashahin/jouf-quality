@@ -489,7 +489,7 @@ async function enterApp() {
     document.getElementById('btn-login').innerHTML='دخول ←';
     document.getElementById('btn-login').disabled=false;
     showPage('pg-login');
-    showErr('❗ فشل الاتصال بقاعدة البيانات. تأكد من تشغيل كود SQL في Supabase.');
+    showErr('❗ فشل الاتصال بقاعدة البيانات: ' + e.message);
   }
 }
 
@@ -823,3 +823,1099 @@ function imRenderCrit(c) {
     </div>
   </div>`;
 }
+
+function imRenderReqItems(critNum, count) {
+  const reqs = INST_REQUIREMENTS[critNum] || [];
+  let html = '';
+  for (let i=0; i<count; i++) {
+    const val = reqs[i] || '';
+    html += `<div class="im-req-item"><div class="req-no">${i+1}</div><input type="text" placeholder="اكتب المتطلب رقم ${i+1}..." value="${escAttr(val)}" data-crit="${critNum}" data-idx="${i}" class="im-req-input" oninput="imSetReqText('${critNum}',${i},this.value,true)"></div>`;
+  }
+  return html || '<div style="font-size:11px;color:var(--mu)">لم يتم تحديد عدد المتطلبات بعد</div>';
+}
+
+// حفظ فوري ومؤكد لمتطلبات محك معيّن
+function imSaveReqs(critNum) {
+  // اقرأ القيم الحالية من الحقول مباشرة لضمان عدم ضياع آخر تعديل
+  const inputs = document.querySelectorAll(`.im-req-input[data-crit="${critNum}"]`);
+  if (!INST_REQUIREMENTS[critNum]) INST_REQUIREMENTS[critNum] = [];
+  inputs.forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    INST_REQUIREMENTS[critNum][idx] = inp.value;
+  });
+
+  // اقرأ "عدد المتطلبات" الحالي من الحقل وحدّث reqCount في INST_CRITERIA أيضاً
+  const countInput = document.getElementById('im-reqcount-'+critNum);
+  const crit = imFindCrit(critNum);
+  if (crit && countInput) {
+    let n = parseInt(countInput.value);
+    if (isNaN(n) || n < 0) n = 0;
+    if (n > 50) n = 50;
+    crit.reqCount = n;
+    // قصّ المتطلبات الزائدة إن قُلِّل العدد
+    if (INST_REQUIREMENTS[critNum].length > n) INST_REQUIREMENTS[critNum] = INST_REQUIREMENTS[critNum].slice(0, n);
+  }
+
+  // حفظ فوري لكلا الإعدادين معاً (المعايير والمتطلبات)
+  Promise.all([
+    sbUpsert('settings', {key:'institutional_criteria', value:JSON.stringify(INST_CRITERIA), updated_at:new Date().toISOString()}),
+    sbUpsert('settings', {key:'institutional_requirements', value:JSON.stringify(INST_REQUIREMENTS), updated_at:new Date().toISOString()})
+  ])
+    .then(() => {
+      const ind = document.getElementById('im-saved-'+critNum);
+      if (ind) { ind.style.display='inline'; setTimeout(()=>{ind.style.display='none';}, 2500); }
+      toast('✓ تم حفظ متطلبات المحك '+critNum+' بشكل دائم', true);
+    })
+    .catch(e => toast('❗ فشل الحفظ: '+e.message));
+}
+
+function imToggleMain(num) {
+  IM_OPEN_MAIN[num] = !IM_OPEN_MAIN[num];
+  const body = document.getElementById('im-main-body-'+num);
+  if (!body) return;
+  body.classList.toggle('open', IM_OPEN_MAIN[num]);
+  const h = body.previousElementSibling.querySelector('.im-arrow');
+  if (h) h.classList.toggle('open', IM_OPEN_MAIN[num]);
+}
+
+function imToggleSub(num) {
+  IM_OPEN_SUB[num] = !IM_OPEN_SUB[num];
+  const body = document.getElementById('im-sub-body-'+num);
+  if (body) body.classList.toggle('open', IM_OPEN_SUB[num]);
+  const h = body.previousElementSibling.querySelector('.im-arrow');
+  if (h) h.classList.toggle('open', IM_OPEN_SUB[num]);
+}
+
+function escAttr(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const esc = escAttr; // اسم مختصر مستخدم في شاشة إرسال إجراء
+
+// ─── تعديل عنوان معيار رئيسي ───
+function imEditMain(num) {
+  const m = INST_CRITERIA.find(x=>x.num===num);
+  if (!m) return;
+  const el = document.getElementById('im-main-title-'+num);
+  el.innerHTML = `<div class="im-edit-inline" onclick="event.stopPropagation()">
+    <span style="font-weight:700;font-size:12px;white-space:nowrap">معيار ${ORD[+num-1]||num}:</span>
+    <input type="text" id="im-main-input-${num}" value="${escAttr(m.title)}" onkeydown="if(event.key==='Enter')imSaveMain('${num}')">
+    <button class="im-edit-btn" onclick="event.stopPropagation();imSaveMain('${num}')">✓ حفظ</button>
+  </div>`;
+  setTimeout(()=>document.getElementById('im-main-input-'+num)?.focus(), 0);
+}
+
+function imSaveMain(num) {
+  const m = INST_CRITERIA.find(x=>x.num===num);
+  const input = document.getElementById('im-main-input-'+num);
+  if (m && input) {
+    const val = input.value.trim();
+    if (val) m.title = val;
+    instSave();
+  }
+  render_c_crit();
+}
+
+// ─── تعديل عنوان معيار فرعي ───
+function imEditSub(num) {
+  const sub = imFindSub(num);
+  if (!sub) return;
+  const el = document.getElementById('im-sub-title-'+num);
+  el.innerHTML = `<div class="im-edit-inline" onclick="event.stopPropagation()">
+    <input type="text" id="im-sub-input-${num}" value="${escAttr(sub.title)}" onkeydown="if(event.key==='Enter')imSaveSub('${num}')">
+    <button class="im-edit-btn lite" onclick="event.stopPropagation();imSaveSub('${num}')">✓ حفظ</button>
+  </div>`;
+  setTimeout(()=>document.getElementById('im-sub-input-'+num)?.focus(), 0);
+}
+
+function imSaveSub(num) {
+  const sub = imFindSub(num);
+  const input = document.getElementById('im-sub-input-'+num);
+  if (sub && input) {
+    const val = input.value.trim();
+    if (val) sub.title = val;
+    instSave();
+  }
+  imRerenderPreserve();
+}
+
+// ─── تعديل عنوان محك ───
+function imEditCrit(num) {
+  const crit = imFindCrit(num);
+  if (!crit) return;
+  const el = document.getElementById('im-crit-title-'+num);
+  el.innerHTML = `<div class="im-edit-inline">
+    <input type="text" id="im-crit-input-${num}" value="${escAttr(crit.title)}" onkeydown="if(event.key==='Enter')imSaveCrit('${num}')">
+    <button class="im-edit-btn lite" onclick="imSaveCrit('${num}')">✓ حفظ</button>
+  </div>`;
+  setTimeout(()=>document.getElementById('im-crit-input-'+num)?.focus(), 0);
+}
+
+function imSaveCrit(num) {
+  const crit = imFindCrit(num);
+  const input = document.getElementById('im-crit-input-'+num);
+  if (crit && input) {
+    const val = input.value.trim();
+    if (val) crit.title = val;
+    instSave();
+  }
+  imRerenderPreserve();
+}
+
+// ─── عدد المتطلبات لكل محك ───
+function imSetReqCount(critNum, value) {
+  let n = parseInt(value);
+  if (isNaN(n) || n < 0) n = 0;
+  if (n > 50) n = 50;
+  const crit = imFindCrit(critNum);
+  if (crit) crit.reqCount = n;
+  if (!INST_REQUIREMENTS[critNum]) INST_REQUIREMENTS[critNum] = [];
+  // trim or keep existing texts
+  document.getElementById('im-req-items-'+critNum).innerHTML = imRenderReqItems(critNum, n);
+  instSave();
+}
+
+function imSetReqText(critNum, idx, val, silent) {
+  if (!INST_REQUIREMENTS[critNum]) INST_REQUIREMENTS[critNum] = [];
+  INST_REQUIREMENTS[critNum][idx] = val;
+  instSave(); // حفظ تلقائي مؤجَّل كنسخة احتياطية بصمت
+}
+
+function imFindSub(subNum) {
+  for (const m of INST_CRITERIA) {
+    const s = m.subs.find(x=>x.num===subNum);
+    if (s) return s;
+  }
+  return null;
+}
+
+function imFindCrit(critNum) {
+  for (const m of INST_CRITERIA) {
+    for (const s of m.subs) {
+      const c = s.criteria.find(x=>x.num===critNum);
+      if (c) return c;
+    }
+  }
+  return null;
+}
+
+function imRerenderPreserve() {
+  render_c_crit();
+}
+
+function render_c_wait() {
+  const items=ALL_ITEMS.filter(it => {
+    const rs = getReqStatus(it);
+    return rs.length>0 && rs.every(r => r.status === 'pending');
+  });
+  document.getElementById('c-wait').innerHTML=`
+    <div class="ph"><div class="pht"><h1>انتظار استجابة الجهات</h1><p>إجراءات لم تبدأ الجهة برفع أي متطلب لها بعد</p></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_wait();updateBadges();toast('تم التحديث')})">🔄</button></div>
+    ${items.length ? items.map(it=>{
+      const reqs = getReqList(it);
+      return `<div class="ic"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><h4>${it.proc}</h4><div class="sub">${it.inst_crit_num} — ${it.inst_crit_title} ← ${it.agency_name}</div></div><span class="bdg bp">⏳ انتظار (${reqs.length} متطلب)</span></div><div class="notif ni">📝 ${it.committee_note}</div>${it.committee_file?`<div class="notif nok">📎 ${it.committee_file}</div>`:''} <div style="font-size:11px;color:var(--mu)">أُرسل: ${it.sent_at}</div></div>`;
+    }).join('') : '<div class="card"><div class="empty">✓ لا توجد إجراءات تنتظر</div></div>'}`;
+}
+window.render_c_wait = render_c_wait;
+
+function render_c_appr() {
+  // اجمع كل المتطلبات تحت المراجعة من جميع الإجراءات
+  const rows = [];
+  ALL_ITEMS.forEach(it => {
+    const reqs = getReqList(it);
+    const rs = getReqStatus(it);
+    rs.forEach((r, idx) => {
+      if (r.status === 'under_review') {
+        rows.push({item: it, idx, reqText: reqs[idx], r});
+      }
+    });
+  });
+
+  // تحديث شارة العدد
+  const ba = document.getElementById('bdg-a');
+  if (ba) ba.textContent = rows.length;
+
+  document.getElementById('c-appr').innerHTML = `
+    <div class="ph"><div class="pht"><h1>متطلبات تحت المراجعة</h1><p>متطلبات رفعتها الجهات وتنتظر قرارك</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_appr();updateBadges()})">🔄</button></div>
+    ${rows.length ? rows.map(({item, idx, reqText, r}) => `
+      <div class="ic new">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <h4>المتطلب: ${reqText}</h4>
+            <div class="sub">${item.crit_title}</div>
+            <div class="sub" style="margin-top:2px">🎯 المعيار الفرعي: ${item.inst_crit_num} — ${item.inst_crit_title}</div>
+            <div class="sub" style="margin-top:2px">📌 الإجراء (المحك): ${item.proc}</div>
+            <div class="sub" style="margin-top:2px">${AGS[item.agency]?.icon||''} الجهة: ${item.agency_name}</div>
+          </div>
+          <span class="bdg bu">🔵 تحت المراجعة</span>
+        </div>
+        ${item.committee_note?`<div class="notif ni">📝 ملاحظاتنا الأصلية: ${item.committee_note}</div>`:''}
+        <div class="notif nok">📎 الملف المرفوع: <strong>${r.file}</strong> <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span></div>
+        ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong><br>${r.agency_note}</div>`:''}
+        <div class="fg"><label class="fl">ملاحظة عند الإعادة (اختياري)</label><textarea class="fc" id="fn-${item.id}-${idx}" placeholder="اكتب ملاحظتك في حال الإعادة للملاحظات..."></textarea></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ok btn-sm" onclick="cDecideReq('${item.id}',${idx},'completed')">✅ مكتمل</button>
+          <button class="btn btn-er btn-sm" onclick="cDecideReq('${item.id}',${idx},'returned')">↩ إعادة للملاحظات</button>
+        </div>
+      </div>
+    `).join('') : '<div class="card"><div class="empty">لا توجد متطلبات تحت المراجعة حالياً</div></div>'}`;
+}
+window.render_c_appr = render_c_appr;
+
+async function cDecideReq(itemId, idx, decision) {
+  const note = document.getElementById(`fn-${itemId}-${idx}`)?.value.trim() || '';
+  const it = ALL_ITEMS.find(i => i.id === itemId);
+  if (!it) return;
+  const rs = getReqStatus(it);
+  rs[idx].status = decision;
+  rs[idx].committee_note = decision === 'returned' ? note : '';
+
+  try {
+    loading(true, 'جاري حفظ القرار...');
+    await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
+    const reqs = getReqList(it);
+    const label = decision === 'completed' ? 'إكمال' : 'إعادة للملاحظات';
+    await sbPost('activity_log', {msg:`${label} المتطلب "${reqs[idx]}" من إجراء "${it.proc}" (${it.agency_name})`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_appr(); render_c_home();
+    toast(decision === 'completed' ? '✅ تم اعتماد المتطلب كمكتمل' : '↩ تم إعادة المتطلب للجهة مع الملاحظات', decision==='completed');
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
+}
+
+function render_c_all() {
+  const fa=document.getElementById('ca-a')?.value||'';
+  const fs=document.getElementById('ca-s')?.value||'';
+  let items=[...ALL_ITEMS];
+  if(fa) items=items.filter(i=>i.agency===fa);
+  if(fs) items=items.filter(i=>i.status===fs);
+  document.getElementById('c-all').innerHTML=`
+    <div class="ph"><div class="pht"><h1>جميع الإجراءات</h1></div><button class="btn btn-g btn-sm" onclick="cExp()">⬇ CSV</button></div>
+    <div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select class="fc" style="width:auto" id="ca-a" onchange="render_c_all()"><option value="">جميع الجهات</option><option value="academic">📚</option><option value="main">🏫</option><option value="postgrad">🎓</option></select>
+      <select class="fc" style="width:auto" id="ca-s" onchange="render_c_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
+    </div></div>
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المعيار الفرعي</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
+    ${items.length ? items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>'}
+    </tbody></table></div></div>`;
+}
+window.render_c_all = render_c_all;
+
+async function cDel(id) {
+  if(!confirm('حذف هذا الإجراء نهائياً؟')) return;
+  try { loading(true); await sbDelete('procedures', id); await loadAll(); loading(false); render_c_all(); render_c_home(); toast('تم الحذف'); }
+  catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+function cExp() {
+  if(!ALL_ITEMS.length) { toast('لا توجد بيانات'); return; }
+  const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
+  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',fmtDate(it.decided_at)]);
+  const NL = String.fromCharCode(10);
+  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join(NL);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download='تقرير_الجودة.csv'; a.click();
+  toast('✓ تم التصدير', true);
+}
+
+function render_c_log() {
+  document.getElementById('c-log').innerHTML=`
+    <div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>محفوظ في Supabase ☁</p></div></div>
+    <div class="card">${ALL_LOGS.length ? ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') : '<div class="empty">لا يوجد نشاط</div>'}</div>`;
+}
+window.render_c_log = render_c_log;
+
+// ═══════════════════════════════════════════
+//  ② AGENCY
+// ═══════════════════════════════════════════
+function buildAgency() {
+  const ag = AGS[CU.agency];
+  document.getElementById('sidebar').innerHTML=`
+    <div class="sbg">الرئيسية</div>
+    <div class="sbi active" onclick="sbAct(this);showScreen('ag-home');render_ag_home()">${ico.grid}نظرة عامة</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('ag-inbox');render_ag_inbox()">${ico.bell}الإجراءات الواردة<span class="sbdg" id="bdg-n" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
+    <div class="sbi" onclick="sbAct(this);showScreen('ag-track');render_ag_track()">${ico.list}تتبع الإجراءات</div>
+    <div class="sbg">الحساب</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('ag-profile');render_ag_profile()">${ico.ppl}بياناتي وكلمة المرور</div>`;
+
+  document.getElementById('mc').innerHTML=`
+    <div class="screen active" id="ag-home"></div>
+    <div class="screen" id="ag-inbox"></div>
+    <div class="screen" id="ag-track"></div>
+    <div class="screen" id="ag-detail"></div>
+    <div class="screen" id="ag-profile"></div>`;
+
+  render_ag_home(); updateBadges();
+}
+
+function mine(f) { return ALL_ITEMS.filter(i=>i.agency===CU.agency&&(!f||f(i))); }
+
+function render_ag_home() {
+  const ag=AGS[CU.agency]; const items=mine(); updateBadges();
+
+  let totalReqs=0, pendingReqs=0, underReview=0, returned=0, completed=0;
+  items.forEach(it => {
+    getReqStatus(it).forEach(r => {
+      totalReqs++;
+      if(r.status==='pending') pendingReqs++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    });
+  });
+
+  document.getElementById('ag-home').innerHTML=`
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>${ag?.name} — Supabase ☁</p></div></div>
+    <div class="sr">
+      <div class="sc" style="border-top:3px solid #dc2626"><div class="ico">📬</div><div class="num">${pendingReqs+returned}</div><div class="lbl">متطلبات تتطلب رفع</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">↩</div><div class="num">${returned}</div><div class="lbl">معاد للملاحظات</div></div>
+    </div>
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.slice(0,10).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
+    </div>`;
+}
+window.render_ag_home = render_ag_home;
+
+// ─── استخراج/تهيئة حالة المتطلبات لإجراء معيّن ───
+function getReqList(it) {
+  let data = [];
+  try { data = JSON.parse(it.inst_requirements || '[]'); } catch(e) {}
+  if (!data.length || !data[0] || !data[0].reqs) return [];
+  return data[0].reqs || [];
+}
+
+function getReqStatus(it) {
+  let rs = [];
+  try { rs = JSON.parse(it.req_status || '[]'); } catch(e) {}
+  const reqs = getReqList(it);
+  // تأكد من تطابق طول المصفوفة مع عدد المتطلبات
+  const out = [];
+  for (let i = 0; i < reqs.length; i++) {
+    out.push(rs[i] || {file:'', uploaded_at:'', agency_note:'', committee_note:'', status:'pending'});
+  }
+  return out;
+}
+
+const REQ_STX = {
+  pending: '⬜ غير مكتمل',
+  under_review: '🔵 تحت المراجعة',
+  returned: '↩ معاد للملاحظات',
+  completed: '✅ مكتمل'
+};
+const REQ_CLS = {
+  pending: 'bs',
+  under_review: 'bu',
+  returned: 'br',
+  completed: 'ba'
+};
+
+function instReqsHtml(it) {
+  if (!it.inst_crit_num) return '';
+  let data = [];
+  try { data = JSON.parse(it.inst_requirements || '[]'); } catch(e) {}
+
+  const isGrouped = data.length && typeof data[0] === 'object' && data[0].reqs;
+
+  let body = '';
+  if (isGrouped) {
+    body = data.map(g => `
+      <div style="margin-top:6px">
+        <div style="font-size:11.5px;font-weight:700">${g.num} — ${g.title}</div>
+        ${g.reqs && g.reqs.length ? `<ul style="margin:2px 0 0;padding-right:18px;font-size:11px">${g.reqs.map(r=>`<li style="margin-bottom:2px">${r}</li>`).join('')}</ul>` : ''}
+      </div>`).join('');
+  } else if (data.length) {
+    body = `<ul style="margin:6px 0 0;padding-right:18px;font-size:11.5px">${data.map(r=>`<li style="margin-bottom:2px">${r}</li>`).join('')}</ul>`;
+  }
+
+  return `<div class="notif" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;flex-direction:column;align-items:stretch">
+    <div style="font-size:12px;font-weight:700">📋 المعيار الفرعي: ${it.inst_crit_num} — ${it.inst_crit_title || ''}</div>
+    ${body}
+  </div>`;
+}
+
+// ─── الإجراءات الواردة: إجراءات لديها متطلبات لم تُرفع بعد أو أُعيدت للملاحظات ───
+function render_ag_inbox() {
+  const items = mine(it => getReqStatus(it).some(r => r.status === 'pending' || r.status === 'returned'));
+  updateBadges();
+  const bdgN = document.getElementById('bdg-n');
+  if (bdgN) bdgN.textContent = items.length;
+
+  document.getElementById('ag-inbox').innerHTML = `
+    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1><p>إجراءات تتطلب رفع متطلبات أو إعادة رفع بعد الملاحظات</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_inbox();updateBadges();toast('تم التحديث')})">🔄</button></div>
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>المعيار الفرعي</th><th>الإجراءات</th><th>المتطلبات</th><th>الحالة</th><th>عرض</th></tr></thead><tbody>
+    ${items.length ? items.map(it => {
+      const reqs = getReqList(it);
+      const rs = getReqStatus(it);
+      const hasReturned = rs.some(r => r.status === 'returned');
+      return `<tr style="${hasReturned?'background:#fef2f2':''}">
+        <td style="font-size:11px">${it.inst_crit_title ? `${it.inst_crit_num} — ${it.inst_crit_title}` : (it.crit_title||'—')}</td>
+        <td style="font-weight:600;font-size:12px">${it.proc}</td>
+        <td style="font-size:11px">${reqs.length} متطلب</td>
+        <td>${hasReturned ? '<span class="bdg br">↩ معاد للملاحظات</span>' : '<span class="bdg bp">🔺 يتطلب رفع</span>'}</td>
+        <td><button class="btn btn-p btn-sm" onclick="agOpenDetail('${it.id}')">عرض</button></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5" class="empty">✓ لا توجد إجراءات واردة</td></tr>'}
+    </tbody></table></div></div>`;
+}
+window.render_ag_inbox = render_ag_inbox;
+
+// ─── صفحة تفصيلية: رفع كل متطلب على حدة ───
+function agOpenDetail(itemId) {
+  const it = ALL_ITEMS.find(i => i.id === itemId);
+  if (!it) return;
+  const reqs = getReqList(it);
+  const rs = getReqStatus(it);
+
+  document.getElementById('ag-detail').innerHTML = `
+    <div class="ph"><div class="pht"><h1>${it.proc}</h1><p>${it.inst_crit_title ? `المعيار الفرعي: ${it.inst_crit_num} — ${it.inst_crit_title}` : (it.crit_title||'')}</p></div>
+    <button class="btn btn-g btn-sm" onclick="sbAct(document.querySelector('[onclick*=ag-inbox]'));showScreen('ag-inbox');render_ag_inbox()">← رجوع</button></div>
+    ${it.committee_note ? `<div class="notif ni">📝 <strong>ملاحظات عمادة التطوير والجودة:</strong> ${it.committee_note}</div>` : ''}
+    ${it.committee_file ? `<div class="notif nok">📎 مستند مرجعي: ${it.committee_file}</div>` : ''}
+    ${reqs.map((reqText, idx) => {
+      const r = rs[idx];
+      const isLocked = r.status === 'under_review' || r.status === 'completed';
+      const statusBadge = `<span class="bdg ${REQ_CLS[r.status]}">${REQ_STX[r.status]}</span>`;
+      const returnedNote = r.status === 'returned' && r.committee_note
+        ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:9px 12px;margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:#b91c1c;margin-bottom:3px">↩ ملاحظة عمادة التطوير والجودة:</div><div style="font-size:12px;color:#7f1d1d">${r.committee_note}</div></div>`
+        : '';
+      const fileInfo = r.file
+        ? `<div class="notif nok">📎 ${r.file} <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span></div>`
+        : '';
+      return `<div class="ic" id="req-${itemId}-${idx}" style="border-right:4px solid ${r.status==='returned'?'var(--er)':(r.status==='completed'?'var(--ok)':'var(--bd)')}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700">📋 المتطلب ${idx+1}: ${reqText}</div>
+          ${statusBadge}
+        </div>
+        ${returnedNote}
+        ${fileInfo}
+        ${isLocked ? '' : `
+          <div class="fg">
+            <label class="fl">⬆ رفع الملف *</label>
+            <div class="uz" id="uz-${itemId}-${idx}" onclick="document.getElementById('fi-${itemId}-${idx}').click()">📁 اضغط لاختيار الملف</div>
+            <input type="file" id="fi-${itemId}-${idx}" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="agReqFile(this,'${itemId}',${idx})">
+          </div>
+          <div class="fg">
+            <label class="fl">💬 ملاحظة (اختياري)</label>
+            <textarea class="fc" id="an-${itemId}-${idx}" placeholder="أي ملاحظة إضافية...">${r.agency_note||''}</textarea>
+          </div>
+          <button class="btn btn-p btn-sm" onclick="agUploadReq('${itemId}',${idx})">رفع المتطلب ←</button>
+        `}
+      </div>`;
+    }).join('')}
+  `;
+  showScreen('ag-detail');
+  document.querySelectorAll('.sbi').forEach(s=>s.classList.remove('active'));
+}
+
+function agReqFile(inp, itemId, idx) {
+  if (inp.files[0]) {
+    const z = document.getElementById(`uz-${itemId}-${idx}`);
+    z.innerHTML = '✅ ' + inp.files[0].name;
+    z.classList.add('done');
+  }
+}
+
+async function agUploadReq(itemId, idx) {
+  const fi = document.getElementById(`fi-${itemId}-${idx}`);
+  const noteEl = document.getElementById(`an-${itemId}-${idx}`);
+  if (!fi || !fi.files[0]) { toast('❗ يرجى اختيار ملف أولاً'); return; }
+
+  const it = ALL_ITEMS.find(i => i.id === itemId);
+  const rs = getReqStatus(it);
+  rs[idx] = {
+    file: fi.files[0].name,
+    uploaded_at: new Date().toISOString(),
+    agency_note: noteEl ? noteEl.value.trim() : '',
+    committee_note: '',
+    status: 'under_review'
+  };
+
+  try {
+    loading(true, 'جاري رفع المتطلب...');
+    await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
+    await sbPost('activity_log', {msg:`رفع متطلب رقم ${idx+1} للإجراء "${it.proc}"`, actor:CU.name});
+    await loadAll(); loading(false);
+    agOpenDetail(itemId);
+    updateBadges();
+    toast('✅ تم رفع المتطلب — في انتظار مراجعة عمادة التطوير والجودة', true);
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
+}
+
+// ─── تتبع الإجراءات ───
+function render_ag_track() {
+  const allMine = mine();
+  const items = allMine.filter(it => {
+    const rs = getReqStatus(it);
+    return rs.some(r => r.status !== 'pending') || rs.length === 0 ? rs.some(r=>r.status!=='pending') : false;
+  });
+  // غير مكتمل: محكات بدأت الرفع لكن لم تكتمل جميع متطلباتها (تظهر منفصلة أدناه)
+  const incomplete = allMine.filter(it => {
+    const rs = getReqStatus(it);
+    const started = rs.some(r => r.status !== 'pending');
+    const allDone = rs.length>0 && rs.every(r => r.status === 'completed');
+    return started && !allDone;
+  });
+  const completed = allMine.filter(it => {
+    const rs = getReqStatus(it);
+    return rs.length>0 && rs.every(r => r.status === 'completed');
+  });
+
+  document.getElementById('ag-track').innerHTML = `
+    <div class="ph"><div class="pht"><h1>تتبع الإجراءات</h1><p>حالة كل متطلب لكل إجراء تم العمل عليه</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_track();toast('تم التحديث')})">🔄</button></div>
+
+    <div class="card"><div class="ctit">📋 إجراءات قيد التتبع</div><div class="tw"><table class="tbl"><thead><tr><th>المعيار الفرعي</th><th>الإجراء</th><th>المتطلبات وحالتها</th></tr></thead><tbody>
+    ${[...incomplete, ...completed].length ? [...incomplete, ...completed].map(it => {
+      const reqs = getReqList(it);
+      const rs = getReqStatus(it);
+      return `<tr>
+        <td style="font-size:11px">${it.inst_crit_title ? `${it.inst_crit_num} — ${it.inst_crit_title}` : (it.crit_title||'—')}</td>
+        <td style="font-weight:600;font-size:12px">${it.proc}</td>
+        <td style="font-size:11px">${reqs.map((r,i)=>`<div style="margin-bottom:4px"><span class="bdg ${REQ_CLS[rs[i].status]}" style="font-size:10px">${REQ_STX[rs[i].status]}</span> ${r}${rs[i].status==='returned'&&rs[i].committee_note?`<div style="color:var(--er);font-size:10px;margin-top:2px">↩ ${rs[i].committee_note}</div>`:''}</div>`).join('')}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="3" class="empty">لا توجد إجراءات قيد التتبع بعد</td></tr>'}
+    </tbody></table></div></div>`;
+}
+window.render_ag_track = render_ag_track;
+
+
+// ═══════════════════════════════════════════
+//  ③ ADMIN
+// ═══════════════════════════════════════════
+function buildAdmin() {
+  document.getElementById('sidebar').innerHTML=`
+    <div class="sbg">التقارير</div>
+    <div class="sbi active" onclick="sbAct(this);showScreen('adm-h');render_adm_h()">${ico.grid}الملخص الشامل</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-all');render_adm_all()">${ico.list}جميع الإجراءات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-ag');render_adm_ag()">${ico.ppl}تقرير الجهات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-cr');render_adm_cr()">${ico.bar}تقرير المعايير</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-log');render_adm_log()">${ico.pen}السجل الكامل</div>
+    <div class="sbg">⚠ إدارة</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-rst')">${ico.trash}إعادة ضبط</div>`;
+
+  document.getElementById('mc').innerHTML=`
+    <div class="screen active" id="adm-h"></div>
+    <div class="screen" id="adm-all"></div>
+    <div class="screen" id="adm-ag"></div>
+    <div class="screen" id="adm-cr"></div>
+    <div class="screen" id="adm-log"></div>
+    <div class="screen" id="adm-rst">
+      <div class="ph"><div class="pht"><h1>⚠ إعادة ضبط</h1></div></div>
+      <div style="border:2px solid #fecaca;border-radius:12px;padding:18px;background:#fff9f9">
+        <p style="font-weight:700;color:#dc2626;margin-bottom:12px">⚠ العملية لا يمكن التراجع عنها — يُحذف من Supabase نهائياً</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-er" onclick="admRstAll()">🗑 حذف كل الإجراءات والسجل</button>
+          <button class="btn btn-g" onclick="admRstItems()">حذف الإجراءات فقط</button>
+        </div>
+      </div>
+    </div>`;
+  render_adm_h();
+}
+
+function render_adm_h() {
+  const t=ALL_ITEMS.length, p=ALL_ITEMS.filter(i=>i.status==='pending').length;
+  const u=ALL_ITEMS.filter(i=>i.status==='uploaded').length, a=ALL_ITEMS.filter(i=>i.status==='approved').length;
+  document.getElementById('adm-h').innerHTML=`
+    <div class="ph"><div class="pht"><h1>الملخص الشامل</h1><p>Supabase ☁</p></div><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_h();toast('تم التحديث')})">🔄</button></div>
+    <div class="sr">
+      <div class="sc" style="border-top:3px solid #374151"><div class="ico">📊</div><div class="num">${t}</div><div class="lbl">إجمالي الإجراءات</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${p}</div><div class="lbl">انتظار الجهة</div></div>
+      <div class="sc" style="border-top:3px solid #7c3aed"><div class="ico">📋</div><div class="num">${u}</div><div class="lbl">جاهز للاعتماد</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${a}</div><div class="lbl">معتمد</div></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="ctit">${ico.ppl}الجهات</div>
+        ${Object.entries(AGS).map(([k,ag])=>{
+          const ags=ALL_ITEMS.filter(i=>i.agency===k);
+          const ap2=ags.filter(i=>i.status==='approved').length;
+          const pct=ags.length?Math.round(ap2/ags.length*100):0;
+          return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px"><span style="font-weight:700">${ag.icon} ${ag.name}</span><span style="display:flex;gap:4px"><span class="bdg bs">${ags.length}</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length}</span><span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length}</span><span class="bdg ba">${ap2}</span></span></div><div class="prog"><div class="pf" style="width:${pct}%;background:${ag.color}"></div></div></div>`;
+        }).join('')}
+      </div>
+      <div class="card"><div class="ctit">${ico.bar}المعايير</div>
+        ${CRITERIA.map((c,i)=>{
+          const cnt=ALL_ITEMS.filter(x=>x.crit_idx===i).length;
+          const pct=Math.round(cnt/c.items.length*100);
+          return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.slice(0,15).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد</div>'}
+    </div>`;
+}
+window.render_adm_h = render_adm_h;
+
+function render_adm_all() {
+  const fa=document.getElementById('adm-fa')?.value||'';
+  const fs=document.getElementById('adm-fs')?.value||'';
+  let items=[...ALL_ITEMS];
+  if(fa) items=items.filter(i=>i.agency===fa);
+  if(fs) items=items.filter(i=>i.status===fs);
+  document.getElementById('adm-all').innerHTML=`
+    <div class="ph"><div class="pht"><h1>جميع الإجراءات</h1></div><div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="admExp()">⬇ CSV</button><button class="btn btn-g btn-sm" onclick="admPrint()">🖨</button></div></div>
+    <div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select class="fc" style="width:auto" id="adm-fa" onchange="render_adm_all()"><option value="">جميع الجهات</option><option value="academic">📚</option><option value="main">🏫</option><option value="postgrad">🎓</option></select>
+      <select class="fc" style="width:auto" id="adm-fs" onchange="render_adm_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
+      <button class="btn btn-er btn-sm" onclick="admDelF()">حذف المُصفّى</button>
+    </div></div>
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المعيار الفرعي</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
+    ${items.length ? items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="10" class="empty">لا يوجد</td></tr>'}
+    </tbody></table></div></div>`;
+}
+window.render_adm_all = render_adm_all;
+
+async function admD1(id) {
+  if(!confirm('حذف؟')) return;
+  try { loading(true); await sbDelete('procedures',id); await loadAll(); loading(false); render_adm_all(); render_adm_h(); toast('تم الحذف'); }
+  catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admDelF() {
+  const fa=document.getElementById('adm-fa')?.value, fs=document.getElementById('adm-fs')?.value;
+  if(!fa&&!fs) { toast('حدد تصفية أولاً'); return; }
+  let items=ALL_ITEMS.filter(i=>(fa?i.agency===fa:true)&&(fs?i.status===fs:true));
+  if(!items.length) { toast('لا توجد عناصر'); return; }
+  if(!confirm('حذف '+items.length+' إجراء نهائياً؟')) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it=>sbDelete('procedures',it.id)));
+    await loadAll(); loading(false); render_adm_all(); render_adm_h();
+    toast('تم حذف '+items.length+' إجراء');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+function admExp() {
+  if(!ALL_ITEMS.length) { toast('لا توجد بيانات'); return; }
+  const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
+  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',fmtDate(it.decided_at)]);
+  const NL=String.fromCharCode(10);
+  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join(NL);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download='تقرير_الجودة.csv'; a.click(); toast('✓ تم التصدير',true);
+}
+
+function admPrint() {
+  const w=window.open('','_blank');
+  w.document.write('<html dir="rtl"><head><meta charset="UTF-8"><title>سجل النشاط</title><style>body{font-family:Arial;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#4a2878;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}</style></head><body><h2>سجل النشاط — نظام متابعة أعمال الجودة</h2><table><thead><tr><th>#</th><th>التاريخ</th><th>الجهة</th><th>النشاط</th></tr></thead><tbody>'+ALL_LOGS.map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDate(l.created_at)+'</td><td>'+l.actor+'</td><td>'+l.msg+'</td></tr>').join('')+'</tbody></table></body></html>');
+  w.document.close(); w.print();
+}
+
+function render_adm_ag() {
+  document.getElementById('adm-ag').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير الجهات</h1></div></div>
+    ${Object.entries(AGS).map(([k,ag])=>{
+      const ags=ALL_ITEMS.filter(i=>i.agency===k);
+      return `<div class="card" style="border-right:4px solid ${ag.color}"><div class="ctit" style="color:${ag.color}">${ag.icon} ${ag.name}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span class="bdg bs">${ags.length} إجمالي</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length} انتظار</span>
+        <span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length} جاهز</span><span class="bdg ba">${ags.filter(i=>i.status==='approved').length} معتمد</span>
+        <span class="bdg br">${ags.filter(i=>i.status==='rejected').length} مُرجع</span>
+      </div>
+      ${ags.length ? `<div class="tw"><table class="tbl" style="font-size:11px"><thead><tr><th>المعيار</th><th>الإجراء</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th></tr></thead><tbody>
+        ${ags.map(it=>`<tr><td>${it.crit_title}</td><td>${it.proc}</td><td style="color:var(--mu)">${it.committee_note||'—'}</td><td>${it.agency_file_note?'📎 '+it.agency_file_note:'لم يُرفع'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">لا توجد إجراءات</div>'}
+      </div>`;
+    }).join('')}`;
+}
+window.render_adm_ag = render_adm_ag;
+
+function render_adm_cr() {
+  document.getElementById('adm-cr').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير المعايير</h1></div></div><div class="card">
+    ${CRITERIA.map((c,i)=>{
+      const sent=ALL_ITEMS.filter(x=>x.crit_idx===i);
+      const pct=Math.round(sent.length/c.items.length*100);
+      return `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:5px"><span>${c.title}</span><span style="display:flex;gap:5px"><span class="bdg bs">${sent.length}/${c.items.length}</span><span class="bdg ba">${sent.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg bp">${sent.filter(i=>i.status==='pending').length} انتظار</span></span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
+    }).join('')}
+  </div>`;
+}
+window.render_adm_cr = render_adm_cr;
+
+function render_adm_log() {
+  document.getElementById('adm-log').innerHTML=`
+    <div class="ph"><div class="pht"><h1>السجل الكامل</h1><p>Supabase ☁</p></div>
+    <button class="btn btn-er btn-sm" onclick="admClrLog()">مسح السجل</button></div>
+    <div class="card">${ALL_LOGS.length ? ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') : '<div class="empty">لا يوجد</div>'}</div>`;
+}
+window.render_adm_log = render_adm_log;
+
+async function admClrLog() {
+  if(!confirm('مسح كامل سجل النشاط؟')) return;
+  loading(true);
+  try {
+    await sbDeleteAll('activity_log');
+    await loadAll(); loading(false); render_adm_log(); toast('تم مسح السجل');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admRstAll() {
+  if(!confirm('⚠ حذف كل الإجراءات والسجل نهائياً من Supabase؟')) return;
+  loading(true, 'جاري الحذف الكامل...');
+  try {
+    await sbDeleteAll('procedures');
+    await sbDeleteAll('activity_log');
+    await loadAll(); loading(false); render_adm_h(); toast('تم إعادة الضبط الكامل');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admRstItems() {
+  if(!confirm('حذف الإجراءات مع الاحتفاظ بالسجل؟')) return;
+  loading(true);
+  try {
+    await sbDeleteAll('procedures');
+    await loadAll(); loading(false); render_adm_h(); toast('تم حذف الإجراءات');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+
+// ═══════════════════════════════════════════
+//  AGENCY PROFILE — تعديل البيانات وكلمة المرور
+// ═══════════════════════════════════════════
+function render_ag_profile() {
+  const u = USERS[CU.id];
+  document.getElementById('ag-profile').innerHTML = `
+    <div class="ph"><div class="pht"><h1>بياناتي</h1><p>تعديل معلومات الحساب وكلمة المرور</p></div></div>
+
+    <div class="card" style="max-width:520px">
+      <div class="ctit">${ico.ppl}معلومات الحساب</div>
+      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">اسم المستخدم</span>
+          <strong style="font-family:monospace">${CU.id}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
+          <span style="color:var(--mu)">الجهة</span>
+          <strong>${CU.name}</strong>
+        </div>
+      </div>
+
+      <div class="ctit" style="margin-top:8px">${ico.pen}تغيير كلمة المرور</div>
+      <div class="fg">
+        <label class="fl">كلمة المرور الحالية *</label>
+        <input class="fc" type="password" id="prof-old" placeholder="أدخل كلمة المرور الحالية">
+      </div>
+      <div class="fg">
+        <label class="fl">كلمة المرور الجديدة *</label>
+        <input class="fc" type="password" id="prof-new" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)">
+      </div>
+      <div class="fg">
+        <label class="fl">تأكيد كلمة المرور الجديدة *</label>
+        <input class="fc" type="password" id="prof-confirm" placeholder="أعد كتابة كلمة المرور الجديدة">
+      </div>
+      <div id="prof-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="agChangePass()">حفظ كلمة المرور الجديدة</button>
+    </div>`;
+}
+window.render_ag_profile = render_ag_profile;
+
+function agChangePass() {
+  const oldP = document.getElementById('prof-old').value;
+  const newP = document.getElementById('prof-new').value;
+  const conf = document.getElementById('prof-confirm').value;
+  const msg  = document.getElementById('prof-msg');
+
+  const showMsg = (text, ok) => {
+    msg.style.display = 'block';
+    msg.style.background = ok ? 'var(--okb)' : 'var(--erb)';
+    msg.style.color = ok ? 'var(--ok)' : 'var(--er)';
+    msg.style.border = ok ? '1px solid var(--okbrd)' : '1px solid var(--erbrd)';
+    msg.textContent = text;
+  };
+
+  if (!oldP || !newP || !conf) { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
+  if (USERS[CU.id].pass !== oldP) { showMsg('❗ كلمة المرور الحالية غير صحيحة', false); return; }
+  if (newP.length < 6) { showMsg('❗ كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل', false); return; }
+  if (newP !== conf) { showMsg('❗ كلمة المرور الجديدة وتأكيدها غير متطابقين', false); return; }
+  if (newP === oldP) { showMsg('❗ كلمة المرور الجديدة يجب أن تختلف عن الحالية', false); return; }
+
+  // Update in memory
+  USERS[CU.id].pass = newP;
+  document.getElementById('prof-old').value = '';
+  document.getElementById('prof-new').value = '';
+  document.getElementById('prof-confirm').value = '';
+  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
+  // Save permanently to Supabase
+  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+  sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
+}
+
+// ═══════════════════════════════════════════
+//  COMMITTEE — إدارة الجهات + مسح الإجراءات
+// ═══════════════════════════════════════════
+
+// Extra agencies stored in memory (beyond the built-in 3)
+let EXTRA_AGENCIES = {};
+
+function getAllAgencies() {
+  return {...AGS, ...EXTRA_AGENCIES};
+}
+
+function render_c_agencies() {
+  const all = getAllAgencies();
+  document.getElementById('c-agencies').innerHTML = `
+    <div class="ph"><div class="pht"><h1>إدارة الجهات</h1><p>الجهات المشاركة في النظام — يمكن إضافة جهات جديدة</p></div></div>
+
+    <div class="card">
+      <div class="ctit">${ico.ppl}الجهات الحالية</div>
+      <div class="tw">
+        <table class="tbl">
+          <thead><tr><th>الجهة</th><th>مفتاح الدخول</th><th>كلمة المرور</th><th>الإجراءات المرسلة</th><th>إجراء</th></tr></thead>
+          <tbody>
+          ${Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`
+            <tr>
+              <td style="font-weight:600">${getAllAgencies()[u.agency||k]?.icon||'🏢'} ${u.name}</td>
+              <td style="font-family:monospace;font-size:12px">${k}</td>
+              <td style="font-family:monospace;font-size:12px">${u.pass}</td>
+              <td>${ALL_ITEMS.filter(i=>i.agency===(u.agency||k)).length}</td>
+              <td>${EXTRA_AGENCIES[u.agency||k]?`<button class="btn btn-er btn-sm" onclick="removeAgency('${k}')">حذف</button>`:'<span style="color:var(--mu);font-size:11px">ثابت</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:540px">
+      <div class="ctit">${ico.send}إضافة جهة جديدة</div>
+      <div class="notif ni">💡 بعد الإضافة، يمكن للجهة الجديدة الدخول للنظام باستخدام مفتاح الدخول وكلمة المرور المحددة.</div>
+      <div class="fg"><label class="fl">اسم الجهة *</label><input class="fc" id="nag-name" placeholder="مثال: وكالة الشؤون المالية"></div>
+      <div class="fg"><label class="fl">مفتاح الدخول (بالإنجليزية، بدون مسافات) *</label><input class="fc" id="nag-key" placeholder="مثال: finance" dir="ltr"></div>
+      <div class="fg"><label class="fl">كلمة المرور *</label><input class="fc" id="nag-pass" placeholder="كلمة مرور للجهة" type="text"></div>
+      <div class="fg">
+        <label class="fl">الأيقونة (اختياري)</label>
+        <select class="fc" id="nag-icon">
+          <option value="🏢">🏢 مبنى</option>
+          <option value="📊">📊 إحصاء</option>
+          <option value="💼">💼 أعمال</option>
+          <option value="🔬">🔬 بحث</option>
+          <option value="📚">📚 تعليم</option>
+          <option value="💰">💰 مالية</option>
+          <option value="🤝">🤝 شراكة</option>
+          <option value="🏗">🏗 مشاريع</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">لون الجهة</label>
+        <select class="fc" id="nag-color">
+          <option value="#0891b2">أزرق بترولي</option>
+          <option value="#1d4ed8">أزرق</option>
+          <option value="#7c3aed">بنفسجي</option>
+          <option value="#16a34a">أخضر</option>
+          <option value="#b45309">برتقالي</option>
+          <option value="#be185d">وردي</option>
+          <option value="#374151">رمادي داكن</option>
+        </select>
+      </div>
+      <div id="nag-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="addNewAgency()">إضافة الجهة ←</button>
+    </div>`;
+}
+window.render_c_agencies = render_c_agencies;
+// ─── Committee Profile ───
+function render_c_profile() {
+  document.getElementById('c-profile').innerHTML = `
+    <div class="ph"><div class="pht"><h1>بياناتي</h1><p>تعديل معلومات حساب عمادة التطوير والجودة</p></div></div>
+    <div class="card" style="max-width:520px">
+      <div class="ctit">${ico.ppl}معلومات الحساب</div>
+      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">اسم المستخدم</span>
+          <strong style="font-family:monospace">${CU.id}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
+          <span style="color:var(--mu)">الجهة</span>
+          <strong>${CU.name}</strong>
+        </div>
+      </div>
+      <div class="ctit" style="margin-top:8px">${ico.pen}تغيير كلمة المرور</div>
+      <div class="fg"><label class="fl">كلمة المرور الحالية *</label><input class="fc" type="password" id="cprof-old" placeholder="أدخل كلمة المرور الحالية"></div>
+      <div class="fg"><label class="fl">كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-new" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)"></div>
+      <div class="fg"><label class="fl">تأكيد كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-confirm" placeholder="أعد كتابة كلمة المرور الجديدة"></div>
+      <div id="cprof-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="cChangePass()">حفظ كلمة المرور الجديدة</button>
+    </div>`;
+}
+window.render_c_profile = render_c_profile;
+
+function cChangePass() {
+  const oldP    = document.getElementById('cprof-old').value;
+  const newP    = document.getElementById('cprof-new').value;
+  const conf    = document.getElementById('cprof-confirm').value;
+  const msg     = document.getElementById('cprof-msg');
+  const showMsg = (text, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=text;
+  };
+  if (!oldP||!newP||!conf)          { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
+  if (USERS[CU.id].pass !== oldP)   { showMsg('❗ كلمة المرور الحالية غير صحيحة', false); return; }
+  if (newP.length < 6)              { showMsg('❗ كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل', false); return; }
+  if (newP !== conf)                 { showMsg('❗ كلمة المرور الجديدة وتأكيدها غير متطابقين', false); return; }
+  if (newP === oldP)                 { showMsg('❗ كلمة المرور الجديدة يجب أن تختلف عن الحالية', false); return; }
+  USERS[CU.id].pass = newP;
+  document.getElementById('cprof-old').value='';
+  document.getElementById('cprof-new').value='';
+  document.getElementById('cprof-confirm').value='';
+  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
+  // Save permanently to Supabase
+  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+  sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
+}
+
+
+
+function addNewAgency() {
+  const name  = document.getElementById('nag-name').value.trim();
+  const key   = document.getElementById('nag-key').value.trim().toLowerCase().replace(/\s+/g,'_');
+  const pass  = document.getElementById('nag-pass').value.trim();
+  const icon  = document.getElementById('nag-icon').value;
+  const color = document.getElementById('nag-color').value;
+  const msg   = document.getElementById('nag-msg');
+
+  const showMsg = (text, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=text;
+  };
+
+  if (!name||!key||!pass) { showMsg('❗ يرجى ملء الاسم والمفتاح وكلمة المرور', false); return; }
+  if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية فقط (حروف وأرقام وشرطة سفلية)', false); return; }
+  if (USERS[key]) { showMsg('❗ هذا المفتاح مستخدم بالفعل، اختر مفتاحاً آخر', false); return; }
+  if (pass.length < 4) { showMsg('❗ كلمة المرور يجب أن تكون 4 أحرف على الأقل', false); return; }
+
+  // Add to extra agencies and USERS
+  const grad = `linear-gradient(135deg, ${color}dd, ${color})`;
+  EXTRA_AGENCIES[key] = {name, icon, color};
+  USERS[key] = {pass, name, role:'agency', agency:key, grad};
+
+  sbPost('activity_log', {msg:`إضافة جهة جديدة: ${name} (مفتاح: ${key})`, actor:'عمادة التطوير والجودة'});
+  // Save extra agencies permanently to Supabase
+  const agToSave = {};
+  Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+    agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+  });
+  sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+
+  showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
+  document.getElementById('nag-name').value='';
+  document.getElementById('nag-key').value='';
+  document.getElementById('nag-pass').value='';
+
+  // Refresh selects in send form if visible
+  const csA = document.getElementById('cs-a');
+  if(csA) {
+    const allAg = getAllAgencies();
+    csA.innerHTML='<option value="">— اختر —</option>'+Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`<option value="${u.agency||k}">${allAg[u.agency||k]?.icon||'🏢'} ${u.name}</option>`).join('');
+  }
+}
+
+function removeAgency(key) {
+  const u = USERS[key];
+  if(!u) return;
+  if(!confirm(`حذف جهة "${u.name}"؟ سيتم حذف جميع إجراءاتها أيضاً.`)) return;
+  const agKey = u.agency || key;
+  delete EXTRA_AGENCIES[agKey];
+  delete USERS[key];
+  // Remove their items from DB
+  const toDelete = ALL_ITEMS.filter(i=>i.agency===agKey);
+  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(async ()=>{
+    // Update saved extra agencies
+    const agToSave = {};
+    Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+      agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+    });
+    await sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+      .catch(()=>{});
+    return loadAll();
+  }).then(()=>{
+    render_c_agencies();
+    toast(`تم حذف جهة "${u.name}"`);
+  });
+}
+
+// ─── مسح جميع الإجراءات ───
+function render_c_clear() {
+  const total = ALL_ITEMS.length;
+  const byStatus = {
+    pending:  ALL_ITEMS.filter(i=>i.status==='pending').length,
+    uploaded: ALL_ITEMS.filter(i=>i.status==='uploaded').length,
+    approved: ALL_ITEMS.filter(i=>i.status==='approved').length,
+    rejected: ALL_ITEMS.filter(i=>i.status==='rejected').length,
+  };
+
+  document.getElementById('c-clear').innerHTML = `
+    <div class="ph"><div class="pht"><h1>مسح جميع الإجراءات</h1><p>حذف نهائي لا يمكن التراجع عنه</p></div></div>
+
+    <div class="card">
+      <div class="ctit">${ico.list}الإجراءات الحالية في قاعدة البيانات</div>
+      <div class="sr" style="grid-template-columns:repeat(4,1fr);margin-bottom:0">
+        <div class="sc" style="border-top:3px solid #374151"><div class="num">${total}</div><div class="lbl">إجمالي الإجراءات</div></div>
+        <div class="sc" style="border-top:3px solid var(--wa)"><div class="num">${byStatus.pending}</div><div class="lbl">انتظار الجهة</div></div>
+        <div class="sc" style="border-top:3px solid #7c3aed"><div class="num">${byStatus.uploaded}</div><div class="lbl">جاهز للاعتماد</div></div>
+        <div class="sc" style="border-top:3px solid var(--ok)"><div class="num">${byStatus.approved}</div><div class="lbl">معتمد</div></div>
+      </div>
+    </div>
+
+    ${total === 0 ? '<div class="card"><div class="empty">✓ لا توجد إجراءات في قاعدة البيانات</div></div>' : `
+    <div style="border:2px solid var(--erbrd);border-radius:var(--r);padding:20px;background:var(--erb)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:14px;font-weight:700;color:var(--er)">تحذير: هذه العملية لا يمكن التراجع عنها</span>
+      </div>
+      <p style="font-size:13px;color:#7f1d1d;margin-bottom:16px;line-height:1.7">سيتم حذف جميع الإجراءات من قاعدة البيانات نهائياً. لتأكيد العملية اكتب كلمة <strong>مسح</strong> في الحقل أدناه:</p>
+      <div class="fg"><input class="fc" id="clear-confirm" placeholder='اكتب كلمة "مسح" للتأكيد' style="border-color:var(--erbrd)"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-er" onclick="doClearAll()">🗑 مسح جميع الإجراءات نهائياً</button>
+        <button class="btn btn-g" onclick="doClearByStatus('approved')">حذف المعتمدة فقط (${byStatus.approved})</button>
+        <button class="btn btn-g" onclick="doClearByStatus('rejected')">حذف المرجوعة فقط (${byStatus.rejected})</button>
+      </div>
+    </div>`}`;
+}
+window.render_c_clear = render_c_clear;
+
+async function doClearAll() {
+  const confirm_val = document.getElementById('clear-confirm')?.value.trim();
+  if(confirm_val !== 'مسح') { toast('❗ اكتب كلمة "مسح" للتأكيد'); return; }
+  if(!confirm(`حذف جميع الإجراءات (${ALL_ITEMS.length}) نهائياً من Supabase؟`)) return;
+  loading(true, 'جاري مسح جميع الإجراءات...');
+  try {
+    await Promise.all(ALL_ITEMS.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`مسح جميع الإجراءات (${ALL_ITEMS.length} إجراء)`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast('✅ تم مسح جميع الإجراءات', true);
+  } catch(e) { loading(false); toast('❗ فشل المسح: '+e.message); }
+}
+
+async function doClearByStatus(status) {
+  const items = ALL_ITEMS.filter(i=>i.status===status);
+  const labels = {approved:'المعتمدة', rejected:'المرجوعة', pending:'قيد الانتظار', uploaded:'جاهز للاعتماد'};
+  if(!items.length) { toast('لا توجد إجراءات بهذه الحالة'); return; }
+  if(!confirm(`حذف ${items.length} إجراء من ${labels[status]}؟`)) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`حذف ${items.length} إجراء (${labels[status]})`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast(`✅ تم حذف ${items.length} إجراء من ${labels[status]}`, true);
+  } catch(e) { loading(false); toast('❗ فشل الحذف: '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+  // الصفحة جاهزة — يتم الاتصال بقاعدة البيانات عند تسجيل الدخول
+});
+</script>
+</body>
+</html>
