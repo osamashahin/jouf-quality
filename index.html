@@ -494,7 +494,7 @@ function buildCommittee() {
     <div class="sbi active" onclick="sbAct(this);showScreen('c-home');render_c_home()">${ico.grid}نظرة عامة</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-crit');render_c_crit()">${ico.check}إدارة المعايير والإجراءات</div>
     <div class="sbg">الإجراءات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-send')">${ico.send}إرسال إجراء</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('c-send');cBuildInstSelect()">${ico.send}إرسال إجراء</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-wait');render_c_wait()">${ico.clock}انتظار الجهات<span class="sbdg" id="bdg-w" style="background:#b45309">0</span></div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-appr');render_c_appr()">${ico.doc}جاهز للاعتماد<span class="sbdg" id="bdg-a" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
     <div class="sbg">السجلات</div>
@@ -512,22 +512,19 @@ function buildCommittee() {
     <div class="screen" id="c-clear"></div>
     <div class="screen" id="c-profile"></div>
     <div class="screen" id="c-send">
-      <div class="ph"><div class="pht"><h1>إرسال إجراء</h1><p>اختر المعيار والإجراء والجهة مع ملاحظاتك</p></div></div>
-      <div class="card" style="max-width:620px">
-        <div class="fg"><label class="fl">المعيار *</label>
-          <select class="fc" id="cs-c" onchange="cFP()"><option value="">— اختر —</option>
-          ${CRITERIA.map((c,i)=>`<option value="${i}">معيار ${ORD[i]}: ${c.title} (${c.items.length})</option>`).join('')}</select></div>
-        <div class="fg"><label class="fl">الإجراء *</label><select class="fc" id="cs-p"><option value="">— اختر —</option></select></div>
+      <div class="ph"><div class="pht"><h1>إرسال إجراء</h1><p>اختر المعيار الرئيسي والمعيار الفرعي والجهة — تظهر محكاته ومتطلباته تلقائياً</p></div></div>
+      <div class="card" style="max-width:680px">
+        <div class="fg"><label class="fl">المعيار الرئيسي *</label>
+          <select class="fc" id="cs-main" onchange="cFillSubs()"><option value="">— اختر —</option></select></div>
+        <div class="fg"><label class="fl">المعيار الفرعي (الإجراء) *</label>
+          <select class="fc" id="cs-sub" onchange="cFillInstReqs()"><option value="">— اختر —</option></select></div>
         <div class="fg"><label class="fl">الجهة *</label>
           <select class="fc" id="cs-a"><option value="">— اختر —</option>
           <option value="academic">📚 وكالة الشؤون التعليمية</option>
           <option value="main">🏫 وكالة الجامعة</option>
           <option value="postgrad">🎓 وكالة الجامعة للدراسات العليا والبحث العلمي</option></select></div>
-        <div class="fg"><label class="fl">المحك المؤسسي (اختياري)</label>
-          <select class="fc" id="cs-inst" onchange="cFillInstReqs()"><option value="">— بدون ربط بمحك —</option></select>
-        </div>
         <div class="fg" id="cs-inst-reqs-wrap" style="display:none">
-          <label class="fl">المتطلبات المرتبطة بهذا المحك</label>
+          <label class="fl">المحكات والمتطلبات المرتبطة بهذا المعيار الفرعي</label>
           <div id="cs-inst-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div>
         </div>
         <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
@@ -560,26 +557,28 @@ function buildCommittee() {
   }, 100);
 }
 
-function cFP() {
-  const ci = parseInt(document.getElementById('cs-c').value);
-  const sel = document.getElementById('cs-p');
-  sel.innerHTML = '<option value="">— اختر —</option>';
-  if(!isNaN(ci)) CRITERIA[ci].items.forEach((it,i) => sel.innerHTML += `<option value="${i}">${it}</option>`);
-}
-
-// ─── بناء قائمة المحكات المؤسسية (هرمية) ───
+// ─── بناء قائمة المعايير الرئيسية ───
 function cBuildInstSelect() {
-  const sel = document.getElementById('cs-inst');
+  const sel = document.getElementById('cs-main');
   if (!sel || sel.options.length > 1) return; // already built
-  let html = '<option value="">— بدون ربط بمحك —</option>';
-  INST_CRITERIA.forEach(m => {
-    m.subs.forEach(sub => {
-      sub.criteria.forEach(c => {
-        html += `<option value="${c.num}">${c.num} — ${c.title}</option>`;
-      });
-    });
+  let html = '<option value="">— اختر —</option>';
+  INST_CRITERIA.forEach((m, mi) => {
+    html += `<option value="${mi}">معيار ${m.num}: ${m.title}</option>`;
   });
   sel.innerHTML = html;
+}
+
+// ─── عند اختيار المعيار الرئيسي، تعبئة المعايير الفرعية ───
+function cFillSubs() {
+  const mi = document.getElementById('cs-main').value;
+  const sel = document.getElementById('cs-sub');
+  sel.innerHTML = '<option value="">— اختر —</option>';
+  if (mi === '') { cFillInstReqs(); return; }
+  const m = INST_CRITERIA[parseInt(mi)];
+  m.subs.forEach((sub, si) => {
+    sel.innerHTML += `<option value="${mi}-${si}">${sub.num} — ${sub.title}</option>`;
+  });
+  cFillInstReqs();
 }
 
 // ─── إيجاد محك مؤسسي بالرقم ───
@@ -594,71 +593,80 @@ function findInstCriterion(num) {
   return null;
 }
 
-// ─── عند اختيار محك مؤسسي، عرض متطلباته كقائمة اختيار ───
+// ─── عند اختيار معيار فرعي، عرض جميع محكاته ومتطلباته ───
 function cFillInstReqs() {
-  const num = document.getElementById('cs-inst').value;
+  const val = document.getElementById('cs-sub').value;
   const wrap = document.getElementById('cs-inst-reqs-wrap');
   const box  = document.getElementById('cs-inst-reqs');
-  if (!num) { wrap.style.display = 'none'; box.innerHTML = ''; return; }
+  if (!val) { wrap.style.display = 'none'; box.innerHTML = ''; return; }
 
-  const crit = findInstCriterion(num);
-  const reqs = (INST_REQUIREMENTS[num] || []).filter(r => r && r.trim());
+  const [mi, si] = val.split('-').map(Number);
+  const sub = INST_CRITERIA[mi].subs[si];
 
-  if (!crit || !reqs.length) {
-    wrap.style.display = 'block';
-    box.innerHTML = '<div style="font-size:12px;color:var(--mu)">لا توجد متطلبات محددة لهذا المحك في "إدارة المعايير والإجراءات"</div>';
+  wrap.style.display = 'block';
+  if (!sub.criteria.length) {
+    box.innerHTML = '<div style="font-size:12px;color:var(--mu)">لا توجد محكات لهذا المعيار الفرعي</div>';
     return;
   }
 
-  wrap.style.display = 'block';
-  box.innerHTML = reqs.map((r,i) => `
-    <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--bd)">
-      <input type="checkbox" class="cs-req-chk" value="${esc(r)}" checked style="margin-top:3px">
-      <span>${esc(r)}</span>
-    </label>`).join('');
+  box.innerHTML = sub.criteria.map(c => {
+    const reqs = (INST_REQUIREMENTS[c.num] || []).filter(r => r && r.trim());
+    return `
+    <div style="padding:8px 0;border-bottom:1px solid var(--bd)">
+      <div style="font-size:12.5px;font-weight:700;color:var(--pd);margin-bottom:${reqs.length?'6px':'0'}">🎯 ${c.num} — ${esc(c.title)}</div>
+      ${reqs.length ? reqs.map(r => `
+        <label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0 4px 14px;font-size:12px;cursor:pointer">
+          <input type="checkbox" class="cs-req-chk" data-crit="${c.num}" data-title="${esc(c.title)}" value="${esc(r)}" checked style="margin-top:3px">
+          <span>${esc(r)}</span>
+        </label>`).join('') : '<div style="font-size:11px;color:var(--mu);padding-right:14px">لا توجد متطلبات محددة لهذا المحك</div>'}
+    </div>`;
+  }).join('');
 }
+
 function cMF(inp) {
   if(inp.files[0]) { const z=document.getElementById('cs-uz'); z.textContent='✅ '+inp.files[0].name; z.classList.add('done'); }
 }
 function cClr() {
-  document.getElementById('cs-c').value=''; cFP();
+  document.getElementById('cs-main').value=''; cFillSubs();
   document.getElementById('cs-a').value=''; document.getElementById('cs-n').value='';
   document.getElementById('cs-f').value='';
   const z=document.getElementById('cs-uz'); z.textContent='📎 اضغط لإرفاق مستند'; z.classList.remove('done');
-  const instSel=document.getElementById('cs-inst');
-  if(instSel){ instSel.value=''; cFillInstReqs(); }
 }
 
 async function cSend() {
-  const ci=document.getElementById('cs-c').value, pi=document.getElementById('cs-p').value;
+  const mi=document.getElementById('cs-main').value, subVal=document.getElementById('cs-sub').value;
   const ag=document.getElementById('cs-a').value, note=document.getElementById('cs-n').value.trim();
   const fi=document.getElementById('cs-f');
-  const instNum = document.getElementById('cs-inst')?.value || '';
-  if(ci===''||pi===''||ag==='') { toast('❗ يرجى إكمال الحقول المطلوبة'); return; }
+  if(mi===''||subVal===''||ag==='') { toast('❗ يرجى إكمال الحقول المطلوبة'); return; }
   if(!note) { toast('❗ يرجى كتابة الملاحظات للجهة'); return; }
   const fn = fi.files[0] ? fi.files[0].name : '';
 
-  // جمع المتطلبات المحددة للمحك المؤسسي (إن وُجد)
-  let instCritTitle = '';
-  let selectedReqs = [];
-  if (instNum) {
-    const crit = findInstCriterion(instNum);
-    instCritTitle = crit ? crit.title : '';
-    selectedReqs = Array.from(document.querySelectorAll('.cs-req-chk:checked')).map(c => c.value);
-  }
+  const [smi, ssi] = subVal.split('-').map(Number);
+  const mainCrit = INST_CRITERIA[smi];
+  const subCrit  = mainCrit.subs[ssi];
+
+  // جمع المتطلبات المحددة من جميع محكات هذا المعيار الفرعي
+  const checked = Array.from(document.querySelectorAll('.cs-req-chk:checked'));
+  const reqsByCrit = {};
+  checked.forEach(c => {
+    const num = c.dataset.crit;
+    if (!reqsByCrit[num]) reqsByCrit[num] = {num, title:c.dataset.title, reqs:[]};
+    reqsByCrit[num].reqs.push(c.value);
+  });
+  const selectedReqs = Object.values(reqsByCrit);
 
   const item = {
     id: 'p'+Date.now()+Math.random().toString(36).slice(2,5),
-    crit_idx: parseInt(ci), crit_title: CRITERIA[ci].title,
-    proc: CRITERIA[ci].items[parseInt(pi)],
+    crit_idx: smi, crit_title: `معيار ${mainCrit.num}: ${mainCrit.title}`,
+    proc: `${subCrit.num} — ${subCrit.title}`,
     agency: ag, agency_name: AGS[ag].name,
     committee_note: note, committee_file: fn,
     agency_file_note: '', agency_uploaded_at: '',
     agency_note: '', resubmit_count: 0,
     status: 'pending', final_note: '', decided_at: '',
     sent_at: new Date().toLocaleString('ar-SA'),
-    inst_crit_num: instNum,
-    inst_crit_title: instCritTitle,
+    inst_crit_num: subCrit.num,
+    inst_crit_title: subCrit.title,
     inst_requirements: JSON.stringify(selectedReqs)
   };
   try {
@@ -982,7 +990,7 @@ function render_c_all() {
       <select class="fc" style="width:auto" id="ca-a" onchange="render_c_all()"><option value="">جميع الجهات</option><option value="academic">📚</option><option value="main">🏫</option><option value="postgrad">🎓</option></select>
       <select class="fc" style="width:auto" id="ca-s" onchange="render_c_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
     </div></div>
-    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المحك</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المعيار الفرعي</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
     ${items.length ? items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>'}
     </tbody></table></div></div>`;
 }
@@ -1076,11 +1084,26 @@ function render_ag_inbox() {
 
 function instReqsHtml(it) {
   if (!it.inst_crit_num) return '';
-  let reqs = [];
-  try { reqs = JSON.parse(it.inst_requirements || '[]'); } catch(e) {}
+  let data = [];
+  try { data = JSON.parse(it.inst_requirements || '[]'); } catch(e) {}
+
+  // دعم الصيغة القديمة (مصفوفة نصوص مسطّحة) والجديدة (مصفوفة محكات بمتطلباتها)
+  const isGrouped = data.length && typeof data[0] === 'object' && data[0].reqs;
+
+  let body = '';
+  if (isGrouped) {
+    body = data.map(g => `
+      <div style="margin-top:6px">
+        <div style="font-size:11.5px;font-weight:700">${g.num} — ${g.title}</div>
+        ${g.reqs && g.reqs.length ? `<ul style="margin:2px 0 0;padding-right:18px;font-size:11px">${g.reqs.map(r=>`<li style="margin-bottom:2px">${r}</li>`).join('')}</ul>` : ''}
+      </div>`).join('');
+  } else if (data.length) {
+    body = `<ul style="margin:6px 0 0;padding-right:18px;font-size:11.5px">${data.map(r=>`<li style="margin-bottom:2px">${r}</li>`).join('')}</ul>`;
+  }
+
   return `<div class="notif" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;flex-direction:column;align-items:stretch">
-    <div style="font-size:12px;font-weight:700;margin-bottom:${reqs.length?'6px':'0'}">🎯 المحك المؤسسي: ${it.inst_crit_num} — ${it.inst_crit_title || ''}</div>
-    ${reqs.length ? `<ul style="margin:0;padding-right:18px;font-size:11.5px">${reqs.map(r=>`<li style="margin-bottom:2px">${r}</li>`).join('')}</ul>` : ''}
+    <div style="font-size:12px;font-weight:700">📋 المعيار الفرعي: ${it.inst_crit_num} — ${it.inst_crit_title || ''}</div>
+    ${body}
   </div>`;
 }
 
@@ -1265,7 +1288,7 @@ function render_adm_all() {
       <select class="fc" style="width:auto" id="adm-fs" onchange="render_adm_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
       <button class="btn btn-er btn-sm" onclick="admDelF()">حذف المُصفّى</button>
     </div></div>
-    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المحك</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المعيار الفرعي</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
     ${items.length ? items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="10" class="empty">لا يوجد</td></tr>'}
     </tbody></table></div></div>`;
 }
