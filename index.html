@@ -523,6 +523,13 @@ function buildCommittee() {
           <option value="academic">📚 وكالة الشؤون التعليمية</option>
           <option value="main">🏫 وكالة الجامعة</option>
           <option value="postgrad">🎓 وكالة الجامعة للدراسات العليا والبحث العلمي</option></select></div>
+        <div class="fg"><label class="fl">المحك المؤسسي (اختياري)</label>
+          <select class="fc" id="cs-inst" onchange="cFillInstReqs()"><option value="">— بدون ربط بمحك —</option></select>
+        </div>
+        <div class="fg" id="cs-inst-reqs-wrap" style="display:none">
+          <label class="fl">المتطلبات المرتبطة بهذا المحك</label>
+          <div id="cs-inst-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div>
+        </div>
         <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
           <textarea class="fc" id="cs-n" placeholder="اكتب المتطلبات..."></textarea></div>
         <div class="fg"><label class="fl">مستند مرجعي (اختياري)</label>
@@ -559,6 +566,57 @@ function cFP() {
   sel.innerHTML = '<option value="">— اختر —</option>';
   if(!isNaN(ci)) CRITERIA[ci].items.forEach((it,i) => sel.innerHTML += `<option value="${i}">${it}</option>`);
 }
+
+// ─── بناء قائمة المحكات المؤسسية (هرمية) ───
+function cBuildInstSelect() {
+  const sel = document.getElementById('cs-inst');
+  if (!sel || sel.options.length > 1) return; // already built
+  let html = '<option value="">— بدون ربط بمحك —</option>';
+  INST_CRITERIA.forEach(m => {
+    m.subs.forEach(sub => {
+      sub.criteria.forEach(c => {
+        html += `<option value="${c.num}">${c.num} — ${c.title}</option>`;
+      });
+    });
+  });
+  sel.innerHTML = html;
+}
+
+// ─── إيجاد محك مؤسسي بالرقم ───
+function findInstCriterion(num) {
+  for (const m of INST_CRITERIA) {
+    for (const sub of m.subs) {
+      for (const c of sub.criteria) {
+        if (c.num === num) return c;
+      }
+    }
+  }
+  return null;
+}
+
+// ─── عند اختيار محك مؤسسي، عرض متطلباته كقائمة اختيار ───
+function cFillInstReqs() {
+  const num = document.getElementById('cs-inst').value;
+  const wrap = document.getElementById('cs-inst-reqs-wrap');
+  const box  = document.getElementById('cs-inst-reqs');
+  if (!num) { wrap.style.display = 'none'; box.innerHTML = ''; return; }
+
+  const crit = findInstCriterion(num);
+  const reqs = (INST_REQUIREMENTS[num] || []).filter(r => r && r.trim());
+
+  if (!crit || !reqs.length) {
+    wrap.style.display = 'block';
+    box.innerHTML = '<div style="font-size:12px;color:var(--mu)">لا توجد متطلبات محددة لهذا المحك في "إدارة المعايير والإجراءات"</div>';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  box.innerHTML = reqs.map((r,i) => `
+    <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--bd)">
+      <input type="checkbox" class="cs-req-chk" value="${esc(r)}" checked style="margin-top:3px">
+      <span>${esc(r)}</span>
+    </label>`).join('');
+}
 function cMF(inp) {
   if(inp.files[0]) { const z=document.getElementById('cs-uz'); z.textContent='✅ '+inp.files[0].name; z.classList.add('done'); }
 }
@@ -567,15 +625,28 @@ function cClr() {
   document.getElementById('cs-a').value=''; document.getElementById('cs-n').value='';
   document.getElementById('cs-f').value='';
   const z=document.getElementById('cs-uz'); z.textContent='📎 اضغط لإرفاق مستند'; z.classList.remove('done');
+  const instSel=document.getElementById('cs-inst');
+  if(instSel){ instSel.value=''; cFillInstReqs(); }
 }
 
 async function cSend() {
   const ci=document.getElementById('cs-c').value, pi=document.getElementById('cs-p').value;
   const ag=document.getElementById('cs-a').value, note=document.getElementById('cs-n').value.trim();
   const fi=document.getElementById('cs-f');
+  const instNum = document.getElementById('cs-inst')?.value || '';
   if(ci===''||pi===''||ag==='') { toast('❗ يرجى إكمال الحقول المطلوبة'); return; }
   if(!note) { toast('❗ يرجى كتابة الملاحظات للجهة'); return; }
   const fn = fi.files[0] ? fi.files[0].name : '';
+
+  // جمع المتطلبات المحددة للمحك المؤسسي (إن وُجد)
+  let instCritTitle = '';
+  let selectedReqs = [];
+  if (instNum) {
+    const crit = findInstCriterion(instNum);
+    instCritTitle = crit ? crit.title : '';
+    selectedReqs = Array.from(document.querySelectorAll('.cs-req-chk:checked')).map(c => c.value);
+  }
+
   const item = {
     id: 'p'+Date.now()+Math.random().toString(36).slice(2,5),
     crit_idx: parseInt(ci), crit_title: CRITERIA[ci].title,
@@ -585,7 +656,10 @@ async function cSend() {
     agency_file_note: '', agency_uploaded_at: '',
     agency_note: '', resubmit_count: 0,
     status: 'pending', final_note: '', decided_at: '',
-    sent_at: new Date().toLocaleString('ar-SA')
+    sent_at: new Date().toLocaleString('ar-SA'),
+    inst_crit_num: instNum,
+    inst_crit_title: instCritTitle,
+    inst_requirements: JSON.stringify(selectedReqs)
   };
   try {
     loading(true, 'جاري الإرسال...');
@@ -858,6 +932,7 @@ function render_c_appr() {
     ${items.length ? items.map(it=>`<div class="ic new">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px"><div><h4>${it.proc}</h4><div class="sub">${it.crit_title}</div><div class="sub" style="margin-top:3px">${AGS[it.agency]?.icon||''} ${it.agency_name}</div></div><span class="bdg bu">📋 رُفع المستند</span></div>
       ${it.committee_note?`<div class="notif ni">📝 ملاحظاتنا: ${it.committee_note}</div>`:''}
+      ${instReqsHtml(it)}
       ${it.agency_file_note?`<div class="notif nok">📎 ${it.agency_file_note} <span style="color:var(--mu);font-size:10px">${fmtDate(it.agency_uploaded_at)}</span></div>`:''}
       ${it.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 13px;margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:4px">💬 رد الجهة وملاحظاتها:</div><div style="font-size:12px;color:#14532d">${it.agency_note}</div></div>`:''}
       ${it.resubmit_count>0?`<div style="font-size:11px;color:var(--mu);margin-bottom:8px">🔄 عدد مرات إعادة الرفع: ${it.resubmit_count}</div>`:''}
@@ -907,8 +982,8 @@ function render_c_all() {
       <select class="fc" style="width:auto" id="ca-a" onchange="render_c_all()"><option value="">جميع الجهات</option><option value="academic">📚</option><option value="main">🏫</option><option value="postgrad">🎓</option></select>
       <select class="fc" style="width:auto" id="ca-s" onchange="render_c_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
     </div></div>
-    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
-    ${items.length ? items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>'}
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المحك</th><th>الجهة</th><th>الحالة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الإرسال</th><th>×</th></tr></thead><tbody>
+    ${items.length ? items.map((it,i)=>`<tr><td style="color:var(--mu);font-size:10px">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:11px;color:var(--mu);max-width:140px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td><button class="btn btn-er btn-sm" onclick="cDel('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="9" class="empty">لا يوجد نتائج</td></tr>'}
     </tbody></table></div></div>`;
 }
 window.render_c_all = render_c_all;
@@ -999,6 +1074,16 @@ function render_ag_inbox() {
     ${items.length ? items.map(it => agBuildCard(it)).join('') : '<div class="card"><div class="empty">✓ لا توجد إجراءات معلقة أو مُرجعة</div></div>'}`;
 }
 
+function instReqsHtml(it) {
+  if (!it.inst_crit_num) return '';
+  let reqs = [];
+  try { reqs = JSON.parse(it.inst_requirements || '[]'); } catch(e) {}
+  return `<div class="notif" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;flex-direction:column;align-items:stretch">
+    <div style="font-size:12px;font-weight:700;margin-bottom:${reqs.length?'6px':'0'}">🎯 المحك المؤسسي: ${it.inst_crit_num} — ${it.inst_crit_title || ''}</div>
+    ${reqs.length ? `<ul style="margin:0;padding-right:18px;font-size:11.5px">${reqs.map(r=>`<li style="margin-bottom:2px">${r}</li>`).join('')}</ul>` : ''}
+  </div>`;
+}
+
 function agBuildCard(it) {
   const isRejected = it.status === 'rejected';
   const borderColor = isRejected ? 'var(--er)' : '#fca5a5';
@@ -1023,6 +1108,7 @@ function agBuildCard(it) {
     </div>
     <div class="notif ni">📝 <strong>ملاحظات اللجنة:</strong> ${it.committee_note}</div>
     ${it.committee_file ? `<div class="notif nok">📎 مستند مرجعي: ${it.committee_file}</div>` : ''}
+    ${instReqsHtml(it)}
     <div style="font-size:11px;color:var(--mu);margin-bottom:10px">أُرسل: ${it.sent_at}</div>
     ${rejectedSection}
     <div class="fg">
@@ -1179,8 +1265,8 @@ function render_adm_all() {
       <select class="fc" style="width:auto" id="adm-fs" onchange="render_adm_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
       <button class="btn btn-er btn-sm" onclick="admDelF()">حذف المُصفّى</button>
     </div></div>
-    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
-    ${items.length ? items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="10" class="empty">لا يوجد</td></tr>'}
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المحك</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
+    ${items.length ? items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="10" class="empty">لا يوجد</td></tr>'}
     </tbody></table></div></div>`;
 }
 window.render_adm_all = render_adm_all;
