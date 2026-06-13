@@ -609,18 +609,38 @@ function cFillInstReqs() {
     return;
   }
 
-  box.innerHTML = sub.criteria.map(c => {
+  box.innerHTML = `
+    <div style="font-size:11px;color:var(--mu);margin-bottom:8px">✅ اختر المحكات التي تريد إرسالها للجهة (يمكن إلغاء تحديد ما لا ينطبق)</div>
+    ` + sub.criteria.map(c => {
     const reqs = (INST_REQUIREMENTS[c.num] || []).filter(r => r && r.trim());
     return `
-    <div style="padding:8px 0;border-bottom:1px solid var(--bd)">
-      <div style="font-size:12.5px;font-weight:700;color:var(--pd);margin-bottom:${reqs.length?'6px':'0'}">🎯 ${c.num} — ${esc(c.title)}</div>
-      ${reqs.length ? reqs.map(r => `
-        <label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0 4px 14px;font-size:12px;cursor:pointer">
-          <input type="checkbox" class="cs-req-chk" data-crit="${c.num}" data-title="${esc(c.title)}" value="${esc(r)}" checked style="margin-top:3px">
-          <span>${esc(r)}</span>
-        </label>`).join('') : '<div style="font-size:11px;color:var(--mu);padding-right:14px">لا توجد متطلبات محددة لهذا المحك</div>'}
+    <div class="cs-crit-block" data-crit-block="${c.num}" style="padding:8px 0;border-bottom:1px solid var(--bd)">
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;font-weight:700;color:var(--pd);cursor:pointer;margin-bottom:${reqs.length?'6px':'0'}">
+        <input type="checkbox" class="cs-crit-chk" data-crit="${c.num}" checked onchange="cToggleCritBlock('${c.num}', this.checked)" style="margin-top:2px">
+        <span>🎯 ${c.num} — ${esc(c.title)}</span>
+      </label>
+      <div class="cs-crit-reqs" data-crit-reqs="${c.num}">
+        ${reqs.length ? reqs.map(r => `
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0 4px 28px;font-size:12px;cursor:pointer">
+            <input type="checkbox" class="cs-req-chk" data-crit="${c.num}" data-title="${esc(c.title)}" value="${esc(r)}" checked style="margin-top:3px">
+            <span>${esc(r)}</span>
+          </label>`).join('') : '<div style="font-size:11px;color:var(--mu);padding-right:28px">لا توجد متطلبات محددة لهذا المحك</div>'}
+      </div>
     </div>`;
   }).join('');
+}
+
+// ─── تفعيل/تعطيل محك كامل (مع متطلباته) من قائمة الإرسال ───
+function cToggleCritBlock(critNum, isChecked) {
+  const reqsBox = document.querySelector(`.cs-crit-reqs[data-crit-reqs="${critNum}"]`);
+  if (!reqsBox) return;
+  reqsBox.style.opacity = isChecked ? '1' : '0.4';
+  reqsBox.querySelectorAll('.cs-req-chk').forEach(chk => {
+    chk.disabled = !isChecked;
+    if (!isChecked) chk.dataset.wasChecked = chk.checked ? '1' : '0';
+    if (isChecked && chk.dataset.wasChecked === '1') chk.checked = true;
+    if (!isChecked) chk.checked = false;
+  });
 }
 
 function cMF(inp) {
@@ -639,19 +659,34 @@ async function cSend() {
   const fi=document.getElementById('cs-f');
   if(mi===''||subVal===''||ag==='') { toast('❗ يرجى إكمال الحقول المطلوبة'); return; }
   if(!note) { toast('❗ يرجى كتابة الملاحظات للجهة'); return; }
+  const hasCritOptions = document.querySelectorAll('.cs-crit-chk').length > 0;
+  const hasCritSelected = document.querySelectorAll('.cs-crit-chk:checked').length > 0;
+  if (hasCritOptions && !hasCritSelected) { toast('❗ يرجى تحديد محك واحد على الأقل من المحكات المرتبطة'); return; }
   const fn = fi.files[0] ? fi.files[0].name : '';
 
   const [smi, ssi] = subVal.split('-').map(Number);
   const mainCrit = INST_CRITERIA[smi];
   const subCrit  = mainCrit.subs[ssi];
 
-  // جمع المتطلبات المحددة من جميع محكات هذا المعيار الفرعي
-  const checked = Array.from(document.querySelectorAll('.cs-req-chk:checked'));
+  // جمع المحكات المُحددة فقط (التي لم يُلغَ تحديدها) مع متطلباتها المُحددة
+  const selectedCritNums = new Set(
+    Array.from(document.querySelectorAll('.cs-crit-chk:checked')).map(c => c.dataset.crit)
+  );
+  const checked = Array.from(document.querySelectorAll('.cs-req-chk:checked'))
+    .filter(c => selectedCritNums.has(c.dataset.crit));
   const reqsByCrit = {};
   checked.forEach(c => {
     const num = c.dataset.crit;
     if (!reqsByCrit[num]) reqsByCrit[num] = {num, title:c.dataset.title, reqs:[]};
     reqsByCrit[num].reqs.push(c.value);
+  });
+  // أضف المحكات المُحددة حتى لو بلا متطلبات (لتظهر للجهة كمحك مطلوب)
+  selectedCritNums.forEach(num => {
+    if (!reqsByCrit[num]) {
+      const block = document.querySelector(`.cs-crit-block[data-crit-block="${num}"] .cs-crit-chk`);
+      const title = block ? block.closest('.cs-crit-block').querySelector('span').textContent.split('—').slice(1).join('—').trim() : '';
+      reqsByCrit[num] = {num, title, reqs:[]};
+    }
   });
   const selectedReqs = Object.values(reqsByCrit);
 
