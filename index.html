@@ -1992,3 +1992,35 @@ async function doClearAll() {
   if(!confirm(`حذف جميع الإجراءات (${ALL_ITEMS.length}) نهائياً من Supabase؟`)) return;
   loading(true, 'جاري مسح جميع الإجراءات...');
   try {
+    await Promise.all(ALL_ITEMS.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`مسح جميع الإجراءات (${ALL_ITEMS.length} إجراء)`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast('✅ تم مسح جميع الإجراءات', true);
+  } catch(e) { loading(false); toast('❗ فشل المسح: '+e.message); }
+}
+
+async function doClearByStatus(status) {
+  const items = ALL_ITEMS.filter(i=>i.status===status);
+  const labels = {approved:'المعتمدة', rejected:'المرجوعة', pending:'قيد الانتظار', uploaded:'جاهز للاعتماد'};
+  if(!items.length) { toast('لا توجد إجراءات بهذه الحالة'); return; }
+  if(!confirm(`حذف ${items.length} إجراء من ${labels[status]}؟`)) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`حذف ${items.length} إجراء (${labels[status]})`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast(`✅ تم حذف ${items.length} إجراء من ${labels[status]}`, true);
+  } catch(e) { loading(false); toast('❗ فشل الحذف: '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+  // الصفحة جاهزة — يتم الاتصال بقاعدة البيانات عند تسجيل الدخول
+});
+</script>
+</body>
+</html>
