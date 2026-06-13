@@ -805,7 +805,23 @@ function imSaveReqs(critNum) {
     INST_REQUIREMENTS[critNum][idx] = inp.value;
   });
 
-  sbUpsert('settings', {key:'institutional_requirements', value:JSON.stringify(INST_REQUIREMENTS), updated_at:new Date().toISOString()})
+  // اقرأ "عدد المتطلبات" الحالي من الحقل وحدّث reqCount في INST_CRITERIA أيضاً
+  const countInput = document.getElementById('im-reqcount-'+critNum);
+  const crit = imFindCrit(critNum);
+  if (crit && countInput) {
+    let n = parseInt(countInput.value);
+    if (isNaN(n) || n < 0) n = 0;
+    if (n > 50) n = 50;
+    crit.reqCount = n;
+    // قصّ المتطلبات الزائدة إن قُلِّل العدد
+    if (INST_REQUIREMENTS[critNum].length > n) INST_REQUIREMENTS[critNum] = INST_REQUIREMENTS[critNum].slice(0, n);
+  }
+
+  // حفظ فوري لكلا الإعدادين معاً (المعايير والمتطلبات)
+  Promise.all([
+    sbUpsert('settings', {key:'institutional_criteria', value:JSON.stringify(INST_CRITERIA), updated_at:new Date().toISOString()}),
+    sbUpsert('settings', {key:'institutional_requirements', value:JSON.stringify(INST_REQUIREMENTS), updated_at:new Date().toISOString()})
+  ])
     .then(() => {
       const ind = document.getElementById('im-saved-'+critNum);
       if (ind) { ind.style.display='inline'; setTimeout(()=>{ind.style.display='none';}, 2500); }
