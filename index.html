@@ -834,6 +834,7 @@ function imToggleSub(num) {
 function escAttr(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+const esc = escAttr; // اسم مختصر مستخدم في شاشة إرسال إجراء
 
 // ─── تعديل عنوان معيار رئيسي ───
 function imEditMain(num) {
