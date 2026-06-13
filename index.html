@@ -280,6 +280,22 @@ async function sbUpsert(table, data) {
   if (!r.ok) throw new Error(await r.text());
 }
 
+// ─── رفع ملف إلى Supabase Storage ───
+async function sbUploadFile(path, file) {
+  const r = await fetch(`https://tfxdvmrgwgruvnjxifyd.supabase.co/storage/v1/object/requirements/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'true'
+    },
+    body: file
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return `https://tfxdvmrgwgruvnjxifyd.supabase.co/storage/v1/object/public/requirements/${path}`;
+}
+
 async function sbDeleteAll(table) {
   // Delete all rows using a always-true filter
   const r = await fetch(SB_URL+'/rest/v1/'+table+'?id=gte.0', {method:'DELETE',headers:SB_H});
@@ -1049,7 +1065,10 @@ function render_c_appr() {
           <span class="bdg bu">🔵 تحت المراجعة</span>
         </div>
         ${item.committee_note?`<div class="notif ni">📝 ملاحظاتنا الأصلية: ${item.committee_note}</div>`:''}
-        <div class="notif nok">📎 الملف المرفوع: <strong>${r.file}</strong> <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span></div>
+        <div class="notif nok">📎 الملف المرفوع: <strong>${r.file}</strong>
+          ${r.file_url ? `<a href="${r.file_url}" target="_blank" class="btn btn-g btn-sm" style="margin-right:10px">⬇ تنزيل الملف</a>` : '<span style="color:var(--er);font-size:11px;margin-right:8px">(رابط غير متاح)</span>'}
+          <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span>
+        </div>
         ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong><br>${r.agency_note}</div>`:''}
         <div class="fg"><label class="fl">ملاحظة عند الإعادة (اختياري)</label><textarea class="fc" id="fn-${item.id}-${idx}" placeholder="اكتب ملاحظتك في حال الإعادة للملاحظات..."></textarea></div>
         <div style="display:flex;gap:8px">
@@ -1296,7 +1315,9 @@ function agOpenReq(itemId, idx) {
        </div>`
     : '';
   const fileInfo = r.file
-    ? `<div class="notif nok">📎 ${r.status==='returned'?'الملف السابق: ':''}${r.file} <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span></div>`
+    ? `<div class="notif nok">📎 ${r.status==='returned'?'الملف السابق: ':''}${r.file}
+        ${r.file_url ? `<a href="${r.file_url}" target="_blank" style="margin-right:8px;font-size:11px;color:#2563eb;text-decoration:underline">⬇ تنزيل</a>` : ''}
+        <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span></div>`
     : '';
 
   document.getElementById('ag-detail').innerHTML = `
@@ -1386,17 +1407,24 @@ async function agUploadReq(itemId, idx) {
   if (!fi || !fi.files[0]) { toast('❗ يرجى اختيار ملف أولاً'); return; }
 
   const it = ALL_ITEMS.find(i => i.id === itemId);
-  const rs = getReqStatus(it);
-  rs[idx] = {
-    file: fi.files[0].name,
-    uploaded_at: new Date().toISOString(),
-    agency_note: noteEl ? noteEl.value.trim() : '',
-    committee_note: '',
-    status: 'under_review'
-  };
+  const file = fi.files[0];
 
   try {
-    loading(true, 'جاري رفع المتطلب...');
+    loading(true, 'جاري رفع الملف...');
+    // رفع الملف إلى Supabase Storage
+    const path = `${CU.agency}/${itemId}/${idx}_${Date.now()}_${file.name}`;
+    const fileUrl = await sbUploadFile(path, file);
+
+    const rs = getReqStatus(it);
+    rs[idx] = {
+      file: file.name,
+      file_url: fileUrl,
+      uploaded_at: new Date().toISOString(),
+      agency_note: noteEl ? noteEl.value.trim() : '',
+      committee_note: '',
+      status: 'under_review'
+    };
+
     await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
     await sbPost('activity_log', {msg:`رفع متطلب رقم ${idx+1} للإجراء "${it.proc}"`, actor:CU.name});
     await loadAll(); loading(false);
