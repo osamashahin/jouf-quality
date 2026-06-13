@@ -755,7 +755,7 @@ function imRenderMain(m) {
   return `<div class="im-main">
     <div class="im-main-h" onclick="imToggleMain('${m.num}')">
       <div class="im-num">${m.num}</div>
-      <div class="im-title" id="im-main-title-${m.num}">معيار ${ORD[+m.num-1]||m.num}: ${escAttr(m.title)}</div>
+      <div class="im-title" id="im-main-title-${m.num}">معيار ${escAttr(m.title)}</div>
       <div class="im-count">${m.subs.length} معيار فرعي — ${critCount} محك</div>
       <button class="im-edit-btn" onclick="event.stopPropagation();imEditMain('${m.num}')">✏ تعديل</button>
       <span class="im-arrow ${open?'open':''}">◀</span>
