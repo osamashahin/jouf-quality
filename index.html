@@ -522,15 +522,15 @@ function buildCommittee() {
           <label class="fl">المحك *</label>
           <select class="fc" id="cs-crit" onchange="cFillInstReqs()"><option value="">— اختر —</option></select>
         </div>
+        <div class="fg" id="cs-inst-reqs-wrap" style="display:none">
+          <label class="fl">المتطلبات المرتبطة بهذا المحك</label>
+          <div id="cs-inst-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div>
+        </div>
         <div class="fg"><label class="fl">الجهة *</label>
           <select class="fc" id="cs-a"><option value="">— اختر —</option>
           <option value="academic">📚 وكالة الشؤون التعليمية</option>
           <option value="main">🏫 وكالة الجامعة</option>
           <option value="postgrad">🎓 وكالة الجامعة للدراسات العليا والبحث العلمي</option></select></div>
-        <div class="fg" id="cs-inst-reqs-wrap" style="display:none">
-          <label class="fl">المتطلبات المرتبطة بهذا المحك</label>
-          <div id="cs-inst-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div>
-        </div>
         <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
           <textarea class="fc" id="cs-n" placeholder="اكتب المتطلبات..."></textarea></div>
         <div class="fg"><label class="fl">مستند مرجعي (اختياري)</label>
