@@ -1236,30 +1236,90 @@ function instReqsHtml(it) {
 
 // ─── الإجراءات الواردة: إجراءات لديها متطلبات لم تُرفع بعد أو أُعيدت للملاحظات ───
 function render_ag_inbox() {
-  const items = mine(it => getReqStatus(it).some(r => r.status === 'pending' || r.status === 'returned'));
+  // صف لكل متطلب (pending أو returned فقط)
+  const rows = [];
+  mine().forEach(it => {
+    const reqs = getReqList(it);
+    const rs   = getReqStatus(it);
+    const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
+    rs.forEach((r, idx) => {
+      if (r.status === 'pending' || r.status === 'returned') {
+        rows.push({it, idx, reqText: reqs[idx]||'—', r, critLabel});
+      }
+    });
+  });
+
   updateBadges();
   const bdgN = document.getElementById('bdg-n');
-  if (bdgN) bdgN.textContent = items.length;
+  if (bdgN) bdgN.textContent = rows.length;
 
   document.getElementById('ag-inbox').innerHTML = `
-    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1><p>إجراءات تتطلب رفع متطلبات أو إعادة رفع بعد الملاحظات</p></div>
+    <div class="ph"><div class="pht"><h1>الإجراءات الواردة</h1></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_inbox();updateBadges();toast('تم التحديث')})">🔄</button></div>
-    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>المعيار الفرعي</th><th>الإجراءات</th><th>المتطلبات</th><th>الحالة</th><th>عرض</th></tr></thead><tbody>
-    ${items.length ? items.map(it => {
-      const reqs = getReqList(it);
-      const rs = getReqStatus(it);
-      const hasReturned = rs.some(r => r.status === 'returned');
-      return `<tr style="${hasReturned?'background:#fef2f2':''}">
-        <td style="font-size:11px">${it.inst_crit_title ? `${it.inst_crit_num} — ${it.inst_crit_title}` : (it.crit_title||'—')}</td>
-        <td style="font-weight:600;font-size:12px">${it.proc}</td>
-        <td style="font-size:11px">${reqs.length} متطلب</td>
-        <td>${hasReturned ? '<span class="bdg br">↩ معاد للملاحظات</span>' : '<span class="bdg bp">🔺 يتطلب رفع</span>'}</td>
-        <td><button class="btn btn-p btn-sm" onclick="agOpenDetail('${it.id}')">عرض</button></td>
-      </tr>`;
-    }).join('') : '<tr><td colspan="5" class="empty">✓ لا توجد إجراءات واردة</td></tr>'}
-    </tbody></table></div></div>`;
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr><th>المحك</th><th>المتطلب</th><th>الحالة</th><th>عرض</th></tr></thead>
+      <tbody>
+      ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => `
+        <tr style="${r.status==='returned'?'background:#fef2f2':''}">
+          <td style="font-weight:600;font-size:12px">${critLabel}</td>
+          <td style="font-size:12px">${reqText}</td>
+          <td>${r.status==='returned'
+            ? '<span class="bdg br">↩ معاد للملاحظات</span>'
+            : '<span class="bdg bp">🔺 يتطلب رفع</span>'}</td>
+          <td><button class="btn btn-p btn-sm" onclick="agOpenReq('${it.id}',${idx})">عرض</button></td>
+        </tr>
+        ${r.status==='returned' && r.committee_note
+          ? `<tr style="background:#fef2f2"><td colspan="4" style="font-size:11px;color:#b91c1c;padding-right:28px">↩ ملاحظة عمادة التطوير والجودة: ${r.committee_note}</td></tr>`
+          : ''}
+      `).join('') : '<tr><td colspan="4" class="empty">✓ لا توجد إجراءات واردة</td></tr>'}
+      </tbody>
+    </table></div></div>`;
 }
 window.render_ag_inbox = render_ag_inbox;
+
+// ─── فتح نموذج رفع متطلب واحد مباشرةً ───
+function agOpenReq(itemId, idx) {
+  const it = ALL_ITEMS.find(i => i.id === itemId);
+  if (!it) return;
+  const reqs = getReqList(it);
+  const rs   = getReqStatus(it);
+  const r    = rs[idx];
+  const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
+
+  const returnedNote = r.status === 'returned' && r.committee_note
+    ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:9px 12px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:#b91c1c;margin-bottom:3px">↩ ملاحظة عمادة التطوير والجودة:</div>
+        <div style="font-size:12px;color:#7f1d1d">${r.committee_note}</div>
+       </div>`
+    : '';
+  const fileInfo = r.file
+    ? `<div class="notif nok">📎 ${r.status==='returned'?'الملف السابق: ':''}${r.file} <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span></div>`
+    : '';
+
+  document.getElementById('ag-detail').innerHTML = `
+    <div class="ph"><div class="pht"><h1>رفع المتطلب</h1><p>${critLabel}</p></div>
+    <button class="btn btn-g btn-sm" onclick="showScreen('ag-inbox');render_ag_inbox();document.querySelectorAll('.sbi').forEach(s=>s.classList.remove('active'))">← رجوع</button></div>
+
+    ${it.committee_note ? `<div class="notif ni">📝 <strong>ملاحظات العمادة للإجراء:</strong> ${it.committee_note}</div>` : ''}
+
+    <div class="ic" style="border-right:4px solid ${r.status==='returned'?'var(--er)':'var(--bd)'}">
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px">📋 المتطلب ${idx+1}: ${reqs[idx]||'—'}</div>
+      ${returnedNote}${fileInfo}
+      <div class="fg">
+        <label class="fl">⬆ ${r.status==='returned'?'ارفع الملف المُعدَّل *':'ارفع الملف المطلوب *'}</label>
+        <div class="uz" id="uz-${itemId}-${idx}" onclick="document.getElementById('fi-${itemId}-${idx}').click()">📁 اضغط لاختيار الملف</div>
+        <input type="file" id="fi-${itemId}-${idx}" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="agReqFile(this,'${itemId}',${idx})">
+      </div>
+      <div class="fg">
+        <label class="fl">💬 ملاحظة (اختياري)</label>
+        <textarea class="fc" id="an-${itemId}-${idx}" placeholder="أي ملاحظة إضافية...">${r.agency_note||''}</textarea>
+      </div>
+      <button class="btn btn-p" onclick="agUploadReq('${itemId}',${idx})">رفع المتطلب ←</button>
+    </div>`;
+
+  showScreen('ag-detail');
+  document.querySelectorAll('.sbi').forEach(s => s.classList.remove('active'));
+}
 
 // ─── صفحة تفصيلية: رفع كل متطلب على حدة ───
 function agOpenDetail(itemId) {
@@ -1337,7 +1397,10 @@ async function agUploadReq(itemId, idx) {
     await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
     await sbPost('activity_log', {msg:`رفع متطلب رقم ${idx+1} للإجراء "${it.proc}"`, actor:CU.name});
     await loadAll(); loading(false);
-    agOpenDetail(itemId);
+    render_ag_inbox(); render_ag_home();
+    showScreen('ag-inbox');
+    document.querySelectorAll('.sbi').forEach(s=>s.classList.remove('active'));
+    document.querySelectorAll('.sbi').forEach(s=>{ if(s.textContent.includes('الإجراءات الواردة')) s.classList.add('active'); });
     updateBadges();
     toast('✅ تم رفع المتطلب — في انتظار مراجعة عمادة التطوير والجودة', true);
   } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
@@ -1345,38 +1408,48 @@ async function agUploadReq(itemId, idx) {
 
 // ─── تتبع الإجراءات ───
 function render_ag_track() {
-  const allMine = mine();
-  const items = allMine.filter(it => {
-    const rs = getReqStatus(it);
-    return rs.some(r => r.status !== 'pending') || rs.length === 0 ? rs.some(r=>r.status!=='pending') : false;
-  });
-  // غير مكتمل: محكات بدأت الرفع لكن لم تكتمل جميع متطلباتها (تظهر منفصلة أدناه)
-  const incomplete = allMine.filter(it => {
-    const rs = getReqStatus(it);
-    const started = rs.some(r => r.status !== 'pending');
-    const allDone = rs.length>0 && rs.every(r => r.status === 'completed');
-    return started && !allDone;
-  });
-  const completed = allMine.filter(it => {
-    const rs = getReqStatus(it);
-    return rs.length>0 && rs.every(r => r.status === 'completed');
+  // صف لكل متطلب (جميع الحالات) — نفس شكل الإجراءات الواردة بدون زر عرض
+  const rows = [];
+  mine().forEach(it => {
+    const reqs = getReqList(it);
+    const rs   = getReqStatus(it);
+    const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
+    rs.forEach((r, idx) => {
+      rows.push({it, idx, reqText: reqs[idx]||'—', r, critLabel});
+    });
+    // إضافة المتطلبات غير المعرّفة في req_status (لم يُرسل الإجراء بعد / بيانات قديمة)
+    if (!rs.length && getReqList(it).length) {
+      getReqList(it).forEach((reqText, idx) => {
+        rows.push({it, idx, reqText, r:{status:'pending'}, critLabel});
+      });
+    }
   });
 
   document.getElementById('ag-track').innerHTML = `
-    <div class="ph"><div class="pht"><h1>تتبع الإجراءات</h1><p>حالة كل متطلب لكل إجراء تم العمل عليه</p></div>
+    <div class="ph"><div class="pht"><h1>تتبع الإجراءات</h1></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_track();toast('تم التحديث')})">🔄</button></div>
-
-    <div class="card"><div class="ctit">📋 إجراءات قيد التتبع</div><div class="tw"><table class="tbl"><thead><tr><th>المعيار الفرعي</th><th>الإجراء</th><th>المتطلبات وحالتها</th></tr></thead><tbody>
-    ${[...incomplete, ...completed].length ? [...incomplete, ...completed].map(it => {
-      const reqs = getReqList(it);
-      const rs = getReqStatus(it);
-      return `<tr>
-        <td style="font-size:11px">${it.inst_crit_title ? `${it.inst_crit_num} — ${it.inst_crit_title}` : (it.crit_title||'—')}</td>
-        <td style="font-weight:600;font-size:12px">${it.proc}</td>
-        <td style="font-size:11px">${reqs.map((r,i)=>`<div style="margin-bottom:4px"><span class="bdg ${REQ_CLS[rs[i].status]}" style="font-size:10px">${REQ_STX[rs[i].status]}</span> ${r}${rs[i].status==='returned'&&rs[i].committee_note?`<div style="color:var(--er);font-size:10px;margin-top:2px">↩ ${rs[i].committee_note}</div>`:''}</div>`).join('')}</td>
-      </tr>`;
-    }).join('') : '<tr><td colspan="3" class="empty">لا توجد إجراءات قيد التتبع بعد</td></tr>'}
-    </tbody></table></div></div>`;
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr><th>المحك</th><th>المتطلب</th><th>الحالة</th></tr></thead>
+      <tbody>
+      ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => {
+        const st = r.status || 'pending';
+        let badge = '';
+        if      (st==='pending')      badge = '<span class="bdg bs">⬜ غير مكتمل</span>';
+        else if (st==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if (st==='returned')     badge = '<span class="bdg br">↩ معاد للملاحظات</span>';
+        else if (st==='completed')    badge = '<span class="bdg ba">✅ مكتملة</span>';
+        return `
+          <tr>
+            <td style="font-weight:600;font-size:12px">${critLabel}</td>
+            <td style="font-size:12px">${reqText}</td>
+            <td>${badge}</td>
+          </tr>
+          ${st==='returned' && r.committee_note
+            ? `<tr><td colspan="3" style="font-size:11px;color:#b91c1c;padding-right:28px">↩ ملاحظة: ${r.committee_note}</td></tr>`
+            : ''}`;
+      }).join('') : '<tr><td colspan="3" class="empty">لا توجد إجراءات مُرسلة بعد</td></tr>'}
+      </tbody>
+    </table></div></div>`;
 }
 window.render_ag_track = render_ag_track;
 
