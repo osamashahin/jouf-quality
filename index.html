@@ -777,6 +777,10 @@ function imRenderCrit(c) {
         <input type="number" min="0" max="50" class="im-req-count" id="im-reqcount-${c.num}" value="${count}" onchange="imSetReqCount('${c.num}', this.value)">
       </div>
       <div id="im-req-items-${c.num}">${imRenderReqItems(c.num, count)}</div>
+      ${count > 0 ? `<div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <button class="btn btn-p btn-sm" onclick="imSaveReqs('${c.num}')">💾 حفظ المتطلبات</button>
+        <span id="im-saved-${c.num}" style="font-size:11px;color:var(--ok);display:none">✓ تم الحفظ بشكل دائم</span>
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -786,9 +790,28 @@ function imRenderReqItems(critNum, count) {
   let html = '';
   for (let i=0; i<count; i++) {
     const val = reqs[i] || '';
-    html += `<div class="im-req-item"><div class="req-no">${i+1}</div><input type="text" placeholder="اكتب المتطلب رقم ${i+1}..." value="${escAttr(val)}" oninput="imSetReqText('${critNum}',${i},this.value)"></div>`;
+    html += `<div class="im-req-item"><div class="req-no">${i+1}</div><input type="text" placeholder="اكتب المتطلب رقم ${i+1}..." value="${escAttr(val)}" data-crit="${critNum}" data-idx="${i}" class="im-req-input" oninput="imSetReqText('${critNum}',${i},this.value,true)"></div>`;
   }
   return html || '<div style="font-size:11px;color:var(--mu)">لم يتم تحديد عدد المتطلبات بعد</div>';
+}
+
+// حفظ فوري ومؤكد لمتطلبات محك معيّن
+function imSaveReqs(critNum) {
+  // اقرأ القيم الحالية من الحقول مباشرة لضمان عدم ضياع آخر تعديل
+  const inputs = document.querySelectorAll(`.im-req-input[data-crit="${critNum}"]`);
+  if (!INST_REQUIREMENTS[critNum]) INST_REQUIREMENTS[critNum] = [];
+  inputs.forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    INST_REQUIREMENTS[critNum][idx] = inp.value;
+  });
+
+  sbUpsert('settings', {key:'institutional_requirements', value:JSON.stringify(INST_REQUIREMENTS), updated_at:new Date().toISOString()})
+    .then(() => {
+      const ind = document.getElementById('im-saved-'+critNum);
+      if (ind) { ind.style.display='inline'; setTimeout(()=>{ind.style.display='none';}, 2500); }
+      toast('✓ تم حفظ متطلبات المحك '+critNum+' بشكل دائم', true);
+    })
+    .catch(e => toast('❗ فشل الحفظ: '+e.message));
 }
 
 function imToggleMain(num) {
@@ -895,10 +918,10 @@ function imSetReqCount(critNum, value) {
   instSave();
 }
 
-function imSetReqText(critNum, idx, val) {
+function imSetReqText(critNum, idx, val, silent) {
   if (!INST_REQUIREMENTS[critNum]) INST_REQUIREMENTS[critNum] = [];
   INST_REQUIREMENTS[critNum][idx] = val;
-  instSave();
+  instSave(); // حفظ تلقائي مؤجَّل كنسخة احتياطية بصمت
 }
 
 function imFindSub(subNum) {
