@@ -215,11 +215,11 @@ textarea.fc{resize:vertical;min-height:75px}
       <div class="div"></div>
       <div class="uh">
         <div class="uht">🔑 بيانات الدخول — انقر للملء التلقائي</div>
-        <div class="uhr" onclick="fill('committee','quality2024')"><div class="uhi">🏛</div><div style="flex:1"><div class="uhn">عمادة التطوير والجودة</div><div class="uhr2">نظام متابعة أعمال الجودة</div></div><div class="uhc">committee / quality2024</div></div>
-        <div class="uhr" onclick="fill('academic','academic2024')"><div class="uhi">📚</div><div style="flex:1"><div class="uhn">وكالة الجامعة للشؤون التعليمية</div><div class="uhr2">وكالة الجامعة</div></div><div class="uhc">academic / academic2024</div></div>
-        <div class="uhr" onclick="fill('main','main2024')"><div class="uhi">🏫</div><div style="flex:1"><div class="uhn">وكالة الجامعة</div><div class="uhr2">وكالة جامعة الجوف</div></div><div class="uhc">main / main2024</div></div>
-        <div class="uhr" onclick="fill('postgrad','postgrad2024')"><div class="uhi">🎓</div><div style="flex:1"><div class="uhn">وكالة الجامعة للدراسات العليا والبحث العلمي</div><div class="uhr2">وكالة الجامعة للدراسات العليا والبحث العلمي</div></div><div class="uhc">postgrad / postgrad2024</div></div>
-        <div class="uhr" onclick="fill('admin','admin2024')"><div class="uhi">⚙</div><div style="flex:1"><div class="uhn">مدير النظام</div><div class="uhr2">لوحة تحكم الأدمن</div></div><div class="uhc">admin / admin2024</div></div>
+        <div class="uhr" onclick="fill('committee','quality2024')"><div style="flex:1"><div class="uhn">عمادة التطوير والجودة</div><div class="uhr2">نظام متابعة أعمال الجودة</div></div><div class="uhc">committee / quality2024</div></div>
+        <div class="uhr" onclick="fill('academic','academic2024')"><div style="flex:1"><div class="uhn">وكالة الجامعة للشؤون التعليمية</div><div class="uhr2">وكالة الجامعة</div></div><div class="uhc">academic / academic2024</div></div>
+        <div class="uhr" onclick="fill('main','main2024')"><div style="flex:1"><div class="uhn">وكالة الجامعة</div><div class="uhr2">وكالة جامعة الجوف</div></div><div class="uhc">main / main2024</div></div>
+        <div class="uhr" onclick="fill('postgrad','postgrad2024')"><div style="flex:1"><div class="uhn">وكالة الجامعة للدراسات العليا والبحث العلمي</div><div class="uhr2">وكالة الجامعة للدراسات العليا والبحث العلمي</div></div><div class="uhc">postgrad / postgrad2024</div></div>
+        <div class="uhr" onclick="fill('admin','admin2024')"><div style="flex:1"><div class="uhn">مدير النظام</div><div class="uhr2">لوحة تحكم الأدمن</div></div><div class="uhc">admin / admin2024</div></div>
       </div>
     </div>
     <div class="lft">جامعة الجوف — عمادة التطوير والجودة © 1446هـ</div>
@@ -1991,32 +1991,4 @@ function addNewAgency() {
   const key   = document.getElementById('nag-key').value.trim().toLowerCase().replace(/\s+/g,'_');
   const pass  = document.getElementById('nag-pass').value.trim();
   const icon  = document.getElementById('nag-icon').value;
-  const color = document.getElementById('nag-color').value;
-  const msg   = document.getElementById('nag-msg');
-
-  const showMsg = (text, ok) => {
-    msg.style.display='block';
-    msg.style.background=ok?'var(--okb)':'var(--erb)';
-    msg.style.color=ok?'var(--ok)':'var(--er)';
-    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
-    msg.textContent=text;
-  };
-
-  if (!name||!key||!pass) { showMsg('❗ يرجى ملء الاسم والمفتاح وكلمة المرور', false); return; }
-  if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية فقط (حروف وأرقام وشرطة سفلية)', false); return; }
-  if (USERS[key]) { showMsg('❗ هذا المفتاح مستخدم بالفعل، اختر مفتاحاً آخر', false); return; }
-  if (pass.length < 4) { showMsg('❗ كلمة المرور يجب أن تكون 4 أحرف على الأقل', false); return; }
-
-  // Add to extra agencies and USERS
-  const grad = `linear-gradient(135deg, ${color}dd, ${color})`;
-  EXTRA_AGENCIES[key] = {name, icon, color};
-  USERS[key] = {pass, name, role:'agency', agency:key, grad};
-
-  sbPost('activity_log', {msg:`إضافة جهة جديدة: ${name} (مفتاح: ${key})`, actor:'عمادة التطوير والجودة'});
-  // Save extra agencies permanently to Supabase
-  const agToSave = {};
-  Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
-    agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
-  });
-  sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
-    .catch(()=>{});
+  const
