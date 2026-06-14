@@ -1717,7 +1717,10 @@ function admExp() {
 
 function admPrint() {
   const w=window.open('','_blank');
-  w.document.write('<html dir="rtl"><head><meta charset="UTF-8"><title>سجل النشاط</title><style>body{font-family:Arial;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#4a2878;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}</style></head><body><h2>سجل النشاط — نظام متابعة أعمال الجودة</h2><table><thead><tr><th>#</th><th>التاريخ</th><th>الجهة</th><th>النشاط</th></tr></thead><tbody>'+ALL_LOGS.map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDate(l.created_at)+'</td><td>'+l.actor+'</td><td>'+l.msg+'</td></tr>').join('')+'</tbody></table></body></html>');
+  const rows=ALL_LOGS.map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDate(l.created_at)+'</td><td>'+l.actor+'</td><td>'+l.msg+'</td></tr>').join('');
+  const css='body{font-family:Arial;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#4a2878;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}';
+  w.document.open();
+  w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>سجل النشاط</title><style>'+css+'</style><h2>سجل النشاط</h2><table><thead><tr><th>#</th><th>التاريخ</th><th>الجهة</th><th>النشاط</th></tr></thead><tbody>'+rows+'</tbody></table>');
   w.document.close(); w.print();
 }
 
@@ -2023,4 +2026,116 @@ function addNewAgency() {
 
   showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
   document.getElementById('nag-name').value='';
-  docum
+  document.getElementById('nag-key').value='';
+  document.getElementById('nag-pass').value='';
+
+  // Refresh selects in send form if visible
+  const csA = document.getElementById('cs-a');
+  if(csA) {
+    const allAg = getAllAgencies();
+    csA.innerHTML='<option value="">— اختر —</option>'+Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`<option value="${u.agency||k}">${allAg[u.agency||k]?.icon||'🏢'} ${u.name}</option>`).join('');
+  }
+}
+
+function removeAgency(key) {
+  const u = USERS[key];
+  if(!u) return;
+  if(!confirm(`حذف جهة "${u.name}"؟ سيتم حذف جميع إجراءاتها أيضاً.`)) return;
+  const agKey = u.agency || key;
+  delete EXTRA_AGENCIES[agKey];
+  delete USERS[key];
+  // Remove their items from DB
+  const toDelete = ALL_ITEMS.filter(i=>i.agency===agKey);
+  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(async ()=>{
+    // Update saved extra agencies
+    const agToSave = {};
+    Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+      agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+    });
+    await sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+      .catch(()=>{});
+    return loadAll();
+  }).then(()=>{
+    render_c_agencies();
+    toast(`تم حذف جهة "${u.name}"`);
+  });
+}
+
+// ─── مسح جميع الإجراءات ───
+function render_c_clear() {
+  const total = ALL_ITEMS.length;
+  const byStatus = {
+    pending:  ALL_ITEMS.filter(i=>i.status==='pending').length,
+    uploaded: ALL_ITEMS.filter(i=>i.status==='uploaded').length,
+    approved: ALL_ITEMS.filter(i=>i.status==='approved').length,
+    rejected: ALL_ITEMS.filter(i=>i.status==='rejected').length,
+  };
+
+  document.getElementById('c-clear').innerHTML = `
+    <div class="ph"><div class="pht"><h1>مسح جميع الإجراءات</h1><p>حذف نهائي لا يمكن التراجع عنه</p></div></div>
+
+    <div class="card">
+      <div class="ctit">${ico.list}الإجراءات الحالية في قاعدة البيانات</div>
+      <div class="sr" style="grid-template-columns:repeat(4,1fr);margin-bottom:0">
+        <div class="sc" style="border-top:3px solid #374151"><div class="num">${total}</div><div class="lbl">إجمالي الإجراءات</div></div>
+        <div class="sc" style="border-top:3px solid var(--wa)"><div class="num">${byStatus.pending}</div><div class="lbl">انتظار الجهة</div></div>
+        <div class="sc" style="border-top:3px solid #7c3aed"><div class="num">${byStatus.uploaded}</div><div class="lbl">جاهز للاعتماد</div></div>
+        <div class="sc" style="border-top:3px solid var(--ok)"><div class="num">${byStatus.approved}</div><div class="lbl">معتمد</div></div>
+      </div>
+    </div>
+
+    ${total === 0 ? '<div class="card"><div class="empty">✓ لا توجد إجراءات في قاعدة البيانات</div></div>' : `
+    <div style="border:2px solid var(--erbrd);border-radius:var(--r);padding:20px;background:var(--erb)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:14px;font-weight:700;color:var(--er)">تحذير: هذه العملية لا يمكن التراجع عنها</span>
+      </div>
+      <p style="font-size:13px;color:#7f1d1d;margin-bottom:16px;line-height:1.7">سيتم حذف جميع الإجراءات من قاعدة البيانات نهائياً. لتأكيد العملية اكتب كلمة <strong>مسح</strong> في الحقل أدناه:</p>
+      <div class="fg"><input class="fc" id="clear-confirm" placeholder='اكتب كلمة "مسح" للتأكيد' style="border-color:var(--erbrd)"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-er" onclick="doClearAll()">🗑 مسح جميع الإجراءات نهائياً</button>
+        <button class="btn btn-g" onclick="doClearByStatus('approved')">حذف المعتمدة فقط (${byStatus.approved})</button>
+        <button class="btn btn-g" onclick="doClearByStatus('rejected')">حذف المرجوعة فقط (${byStatus.rejected})</button>
+      </div>
+    </div>`}`;
+}
+window.render_c_clear = render_c_clear;
+
+async function doClearAll() {
+  const confirm_val = document.getElementById('clear-confirm')?.value.trim();
+  if(confirm_val !== 'مسح') { toast('❗ اكتب كلمة "مسح" للتأكيد'); return; }
+  if(!confirm(`حذف جميع الإجراءات (${ALL_ITEMS.length}) نهائياً من Supabase؟`)) return;
+  loading(true, 'جاري مسح جميع الإجراءات...');
+  try {
+    await Promise.all(ALL_ITEMS.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`مسح جميع الإجراءات (${ALL_ITEMS.length} إجراء)`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast('✅ تم مسح جميع الإجراءات', true);
+  } catch(e) { loading(false); toast('❗ فشل المسح: '+e.message); }
+}
+
+async function doClearByStatus(status) {
+  const items = ALL_ITEMS.filter(i=>i.status===status);
+  const labels = {approved:'المعتمدة', rejected:'المرجوعة', pending:'قيد الانتظار', uploaded:'جاهز للاعتماد'};
+  if(!items.length) { toast('لا توجد إجراءات بهذه الحالة'); return; }
+  if(!confirm(`حذف ${items.length} إجراء من ${labels[status]}؟`)) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`حذف ${items.length} إجراء (${labels[status]})`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast(`✅ تم حذف ${items.length} إجراء من ${labels[status]}`, true);
+  } catch(e) { loading(false); toast('❗ فشل الحذف: '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+  // الصفحة جاهزة — يتم الاتصال بقاعدة البيانات عند تسجيل الدخول
+});
+</script>
+</body>
+</html>
