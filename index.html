@@ -1991,4 +1991,36 @@ function addNewAgency() {
   const key   = document.getElementById('nag-key').value.trim().toLowerCase().replace(/\s+/g,'_');
   const pass  = document.getElementById('nag-pass').value.trim();
   const icon  = document.getElementById('nag-icon').value;
-  const
+  const color = document.getElementById('nag-color').value;
+  const msg   = document.getElementById('nag-msg');
+
+  const showMsg = (text, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=text;
+  };
+
+  if (!name||!key||!pass) { showMsg('❗ يرجى ملء الاسم والمفتاح وكلمة المرور', false); return; }
+  if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية فقط (حروف وأرقام وشرطة سفلية)', false); return; }
+  if (USERS[key]) { showMsg('❗ هذا المفتاح مستخدم بالفعل، اختر مفتاحاً آخر', false); return; }
+  if (pass.length < 4) { showMsg('❗ كلمة المرور يجب أن تكون 4 أحرف على الأقل', false); return; }
+
+  // Add to extra agencies and USERS
+  const grad = `linear-gradient(135deg, ${color}dd, ${color})`;
+  EXTRA_AGENCIES[key] = {name, icon, color};
+  USERS[key] = {pass, name, role:'agency', agency:key, grad};
+
+  sbPost('activity_log', {msg:`إضافة جهة جديدة: ${name} (مفتاح: ${key})`, actor:'عمادة التطوير والجودة'});
+  // Save extra agencies permanently to Supabase
+  const agToSave = {};
+  Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+    agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+  });
+  sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+
+  showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
+  document.getElementById('nag-name').value='';
+  docum
