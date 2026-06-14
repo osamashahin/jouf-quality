@@ -519,10 +519,9 @@ function buildCommittee() {
     <div class="sbi" onclick="sbAct(this);showScreen('c-crit');render_c_crit()">${ico.check}إدارة المعايير والإجراءات</div>
     <div class="sbg">الإجراءات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-send');cBuildInstSelect()">${ico.send}إرسال إجراء</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-wait');render_c_wait()">${ico.clock}انتظار الجهات<span class="sbdg" id="bdg-w" style="background:#b45309">0</span></div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-appr');render_c_appr()">${ico.doc}متطلبات تحت المراجعة<span class="sbdg" id="bdg-a" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
+    <div class="sbi" onclick="sbAct(this);showScreen('c-appr');render_c_appr()">${ico.doc}اعتماد الإجراءات<span class="sbdg" id="bdg-a" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
+    <div class="sbi" onclick="sbAct(this);showScreen('c-track');render_c_track()">${ico.clock}متابعة الإجراءات</div>
     <div class="sbg">السجلات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-all');render_c_all()">${ico.list}جميع الإجراءات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-log');render_c_log()">${ico.pen}سجل النشاط</div>
     <div class="sbg">الإعدادات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-agencies');render_c_agencies()">${ico.ppl}إدارة الجهات</div>
@@ -566,9 +565,9 @@ function buildCommittee() {
         </div>
       </div>
     </div>
-    <div class="screen" id="c-wait"></div>
     <div class="screen" id="c-appr"></div>
-    <div class="screen" id="c-all"></div>
+    <div class="screen" id="c-appr-detail"></div>
+    <div class="screen" id="c-track"></div>
     <div class="screen" id="c-log"></div>`;
 
   render_c_home(); updateBadges();
@@ -1033,55 +1032,113 @@ function render_c_wait() {
 window.render_c_wait = render_c_wait;
 
 function render_c_appr() {
-  // اجمع كل المتطلبات تحت المراجعة من جميع الإجراءات
+  // جدول شامل: سطر لكل متطلب مرفوع (جميع الحالات ماعدا pending)
   const rows = [];
   ALL_ITEMS.forEach(it => {
     const reqs = getReqList(it);
-    const rs = getReqStatus(it);
-    rs.forEach((r, idx) => {
-      if (r.status === 'under_review') {
-        rows.push({item: it, idx, reqText: reqs[idx], r});
+    const rs   = getReqStatus(it);
+    reqs.forEach((reqText, idx) => {
+      const r = rs[idx] || {status:'pending'};
+      if (r.status !== 'pending') {
+        rows.push({it, idx, reqText, r});
       }
     });
   });
 
-  // تحديث شارة العدد
+  // عدد "تحت المراجعة" للشارة
+  const underReviewCount = rows.filter(x => x.r.status === 'under_review').length;
   const ba = document.getElementById('bdg-a');
-  if (ba) ba.textContent = rows.length;
+  if (ba) ba.textContent = underReviewCount;
 
   document.getElementById('c-appr').innerHTML = `
-    <div class="ph"><div class="pht"><h1>متطلبات تحت المراجعة</h1><p>متطلبات رفعتها الجهات وتنتظر قرارك</p></div>
-    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_appr();updateBadges()})">🔄</button></div>
-    ${rows.length ? rows.map(({item, idx, reqText, r}) => `
-      <div class="ic new">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <h4>المتطلب: ${reqText}</h4>
-            <div class="sub">${item.crit_title}</div>
-            <div class="sub" style="margin-top:2px">🎯 المعيار الفرعي: ${item.inst_crit_num} — ${item.inst_crit_title}</div>
-            <div class="sub" style="margin-top:2px">📌 الإجراء (المحك): ${item.proc}</div>
-            <div class="sub" style="margin-top:2px">${AGS[item.agency]?.icon||''} الجهة: ${item.agency_name}</div>
-          </div>
-          <span class="bdg bu">🔵 تحت المراجعة</span>
-        </div>
-        ${item.committee_note?`<div class="notif ni">📝 ملاحظاتنا الأصلية: ${item.committee_note}</div>`:''}
-        <div class="notif nok">📎 الملف المرفوع: <strong>${r.file}</strong>
-          ${r.file_url ? `<a href="${r.file_url}" target="_blank" class="btn btn-g btn-sm" style="margin-right:10px">⬇ تنزيل الملف</a>` : '<span style="color:var(--er);font-size:11px;margin-right:8px">(رابط غير متاح)</span>'}
-          <span style="color:var(--mu);font-size:10px">${fmtDate(r.uploaded_at)}</span>
-        </div>
-        ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong><br>${r.agency_note}</div>`:''}
-        <div class="fg"><label class="fl">ملاحظة عند الإعادة (اختياري)</label><textarea class="fc" id="fn-${item.id}-${idx}" placeholder="اكتب ملاحظتك في حال الإعادة للملاحظات..."></textarea></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ok btn-sm" onclick="cDecideReq('${item.id}',${idx},'completed')">✅ مكتمل</button>
-          <button class="btn btn-er btn-sm" onclick="cDecideReq('${item.id}',${idx},'returned')">↩ إعادة للملاحظات</button>
-        </div>
-      </div>
-    `).join('') : '<div class="card"><div class="empty">لا توجد متطلبات تحت المراجعة حالياً</div></div>'}`;
+    <div class="ph"><div class="pht"><h1>اعتماد الإجراءات</h1><p>جميع المتطلبات المرفوعة من الجهات — اضغط "اطلاع" لمراجعة المرفق واتخاذ القرار</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_appr();updateBadges();toast('تم التحديث')})">🔄</button></div>
+
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr>
+        <th>المعيار</th>
+        <th>المعيار الفرعي</th>
+        <th>المحك</th>
+        <th>المتطلب</th>
+        <th>الجهة</th>
+        <th>الحالة</th>
+        <th>اطلاع</th>
+      </tr></thead>
+      <tbody>
+      ${rows.length ? rows.map(({it, idx, reqText, r}) => {
+        let badge = '';
+        if      (r.status==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد</span>';
+        else if (r.status==='completed')    badge = '<span class="bdg ba">✅ مكتمل</span>';
+        return `<tr style="${r.status==='under_review'?'background:#eff6ff':''}${r.status==='completed'?'background:#f0fdf4':''}">
+          <td style="font-size:11px">${it.crit_title||'—'}</td>
+          <td style="font-size:11px">${it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : '—'}</td>
+          <td style="font-size:11px;font-weight:600">${it.proc||'—'}</td>
+          <td style="font-size:12px">${reqText}</td>
+          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+          <td>${badge}</td>
+          <td>${r.status!=='completed'
+            ? `<button class="btn btn-p btn-sm" onclick="cOpenReqDetail('${it.id}',${idx})">اطلاع</button>`
+            : '<span style="font-size:11px;color:var(--ok)">✓ منتهي</span>'
+          }</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="7" class="empty">لا توجد مرفقات واردة بعد</td></tr>'}
+      </tbody>
+    </table></div></div>`;
 }
 window.render_c_appr = render_c_appr;
 
+// ─── صفحة الاطلاع والقرار ───
+function cOpenReqDetail(itemId, idx) {
+  const it = ALL_ITEMS.find(i => i.id === itemId);
+  if (!it) return;
+  const reqs = getReqList(it);
+  const rs   = getReqStatus(it);
+  const r    = rs[idx] || {};
+  const reqText = reqs[idx] || '—';
+
+  document.getElementById('c-appr-detail').innerHTML = `
+    <div class="ph"><div class="pht"><h1>اطلاع على المتطلب</h1></div>
+    <button class="btn btn-g btn-sm" onclick="showScreen('c-appr');render_c_appr()">← رجوع</button></div>
+
+    <div class="card" style="max-width:640px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:12px">
+        <div><span style="color:var(--mu)">المعيار:</span><br><strong>${it.crit_title||'—'}</strong></div>
+        <div><span style="color:var(--mu)">المعيار الفرعي:</span><br><strong>${it.inst_crit_num} — ${it.inst_crit_title||'—'}</strong></div>
+        <div><span style="color:var(--mu)">المحك:</span><br><strong>${it.proc||'—'}</strong></div>
+        <div><span style="color:var(--mu)">الجهة:</span><br><strong>${AGS[it.agency]?.icon||''} ${it.agency_name}</strong></div>
+      </div>
+      <div style="background:var(--gray);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-size:11px;color:var(--mu);margin-bottom:4px">المتطلب:</div>
+        <div style="font-size:13px;font-weight:700">${reqText}</div>
+      </div>
+      ${r.file ? `<div class="notif nok" style="margin-bottom:14px">
+        📎 الملف المرفوع: <strong>${r.file}</strong>
+        ${r.file_url
+          ? `<a href="${r.file_url}" target="_blank" class="btn btn-g btn-sm" style="margin-right:10px">⬇ تنزيل الملف</a>`
+          : '<span style="color:var(--er);font-size:11px;margin-right:8px">(رابط غير متاح)</span>'}
+        <span style="color:var(--mu);font-size:10px;display:block;margin-top:4px">رُفع في: ${fmtDate(r.uploaded_at)}</span>
+      </div>` : '<div class="notif" style="color:var(--er);border-color:#fca5a5;background:#fef2f2;margin-bottom:14px">⚠ لم يُرفع ملف بعد</div>'}
+      ${r.agency_note ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 13px;margin-bottom:14px;font-size:12px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong><br>${r.agency_note}</div>` : ''}
+
+      ${r.status !== 'completed' ? `
+      <div class="fg">
+        <label class="fl">ملاحظة عند الإعادة (اختياري)</label>
+        <textarea class="fc" id="crd-note-${itemId}-${idx}" placeholder="اكتب ملاحظتك في حال الإعادة...">${r.committee_note||''}</textarea>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ok" onclick="cDecideReq('${itemId}',${idx},'completed')">✅ مكتمل</button>
+        <button class="btn btn-er" onclick="cDecideReq('${itemId}',${idx},'returned')">↩ معاد وفق الملاحظات</button>
+      </div>` : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;font-size:13px;font-weight:700;color:#15803d;text-align:center">✅ تم اعتماد هذا المتطلب كمكتمل</div>`}
+    </div>`;
+
+  showScreen('c-appr-detail');
+}
+
+
 async function cDecideReq(itemId, idx, decision) {
-  const note = document.getElementById(`fn-${itemId}-${idx}`)?.value.trim() || '';
+  const noteEl = document.getElementById(`crd-note-${itemId}-${idx}`);
+  const note = noteEl ? noteEl.value.trim() : '';
   const it = ALL_ITEMS.find(i => i.id === itemId);
   if (!it) return;
   const rs = getReqStatus(it);
@@ -1092,13 +1149,68 @@ async function cDecideReq(itemId, idx, decision) {
     loading(true, 'جاري حفظ القرار...');
     await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
     const reqs = getReqList(it);
-    const label = decision === 'completed' ? 'إكمال' : 'إعادة للملاحظات';
-    await sbPost('activity_log', {msg:`${label} المتطلب "${reqs[idx]}" من إجراء "${it.proc}" (${it.agency_name})`, actor:'عمادة التطوير والجودة'});
+    const label = decision === 'completed' ? 'اعتماد' : 'إعادة للملاحظات';
+    await sbPost('activity_log', {msg:`${label}: "${reqs[idx]}" — "${it.proc}" (${it.agency_name})`, actor:'عمادة التطوير والجودة'});
     await loadAll(); loading(false);
-    render_c_appr(); render_c_home();
+    showScreen('c-appr'); render_c_appr(); render_c_home();
     toast(decision === 'completed' ? '✅ تم اعتماد المتطلب كمكتمل' : '↩ تم إعادة المتطلب للجهة مع الملاحظات', decision==='completed');
   } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
 }
+
+// ─── متابعة الإجراءات: التاريخ الكامل لكل متطلب ───
+function render_c_track() {
+  const rows = [];
+  ALL_ITEMS.forEach(it => {
+    const reqs = getReqList(it);
+    const rs   = getReqStatus(it);
+    reqs.forEach((reqText, idx) => {
+      const r = rs[idx] || {status:'pending'};
+      rows.push({it, idx, reqText, r});
+    });
+  });
+
+  document.getElementById('c-track').innerHTML = `
+    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>التاريخ الكامل لكل متطلب منذ الإرسال حتى الاعتماد</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_track();toast('تم التحديث')})">🔄</button></div>
+
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr>
+        <th>المعيار</th>
+        <th>المعيار الفرعي</th>
+        <th>المحك</th>
+        <th>المتطلب</th>
+        <th>الجهة</th>
+        <th>تاريخ الإرسال</th>
+        <th>تاريخ الرفع</th>
+        <th>ملاحظة الجهة</th>
+        <th>ملاحظة العمادة</th>
+        <th>الحالة</th>
+      </tr></thead>
+      <tbody>
+      ${rows.length ? rows.map(({it, idx, reqText, r}) => {
+        let badge = '';
+        if      (r.status==='pending')      badge = '<span class="bdg bs">⬜ لم يُرفع</span>';
+        else if (r.status==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد</span>';
+        else if (r.status==='completed')    badge = '<span class="bdg ba">✅ مكتمل</span>';
+        return `<tr>
+          <td style="font-size:11px">${it.crit_title||'—'}</td>
+          <td style="font-size:11px">${it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : '—'}</td>
+          <td style="font-size:11px;font-weight:600">${it.proc||'—'}</td>
+          <td style="font-size:12px">${reqText}</td>
+          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+          <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+          <td style="font-size:10px;color:var(--mu)">${r.uploaded_at ? fmtDate(r.uploaded_at) : '—'}</td>
+          <td style="font-size:11px;color:#15803d">${r.agency_note||'—'}</td>
+          <td style="font-size:11px;color:#b91c1c">${r.committee_note||'—'}</td>
+          <td>${badge}</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="10" class="empty">لا توجد إجراءات بعد</td></tr>'}
+      </tbody>
+    </table></div></div>`;
+}
+window.render_c_track = render_c_track;
+
 
 function render_c_all() {
   const fa=document.getElementById('ca-a')?.value||'';
@@ -1908,119 +2020,3 @@ function addNewAgency() {
   });
   sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
     .catch(()=>{});
-
-  showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
-  document.getElementById('nag-name').value='';
-  document.getElementById('nag-key').value='';
-  document.getElementById('nag-pass').value='';
-
-  // Refresh selects in send form if visible
-  const csA = document.getElementById('cs-a');
-  if(csA) {
-    const allAg = getAllAgencies();
-    csA.innerHTML='<option value="">— اختر —</option>'+Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`<option value="${u.agency||k}">${allAg[u.agency||k]?.icon||'🏢'} ${u.name}</option>`).join('');
-  }
-}
-
-function removeAgency(key) {
-  const u = USERS[key];
-  if(!u) return;
-  if(!confirm(`حذف جهة "${u.name}"؟ سيتم حذف جميع إجراءاتها أيضاً.`)) return;
-  const agKey = u.agency || key;
-  delete EXTRA_AGENCIES[agKey];
-  delete USERS[key];
-  // Remove their items from DB
-  const toDelete = ALL_ITEMS.filter(i=>i.agency===agKey);
-  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(async ()=>{
-    // Update saved extra agencies
-    const agToSave = {};
-    Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
-      agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
-    });
-    await sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
-      .catch(()=>{});
-    return loadAll();
-  }).then(()=>{
-    render_c_agencies();
-    toast(`تم حذف جهة "${u.name}"`);
-  });
-}
-
-// ─── مسح جميع الإجراءات ───
-function render_c_clear() {
-  const total = ALL_ITEMS.length;
-  const byStatus = {
-    pending:  ALL_ITEMS.filter(i=>i.status==='pending').length,
-    uploaded: ALL_ITEMS.filter(i=>i.status==='uploaded').length,
-    approved: ALL_ITEMS.filter(i=>i.status==='approved').length,
-    rejected: ALL_ITEMS.filter(i=>i.status==='rejected').length,
-  };
-
-  document.getElementById('c-clear').innerHTML = `
-    <div class="ph"><div class="pht"><h1>مسح جميع الإجراءات</h1><p>حذف نهائي لا يمكن التراجع عنه</p></div></div>
-
-    <div class="card">
-      <div class="ctit">${ico.list}الإجراءات الحالية في قاعدة البيانات</div>
-      <div class="sr" style="grid-template-columns:repeat(4,1fr);margin-bottom:0">
-        <div class="sc" style="border-top:3px solid #374151"><div class="num">${total}</div><div class="lbl">إجمالي الإجراءات</div></div>
-        <div class="sc" style="border-top:3px solid var(--wa)"><div class="num">${byStatus.pending}</div><div class="lbl">انتظار الجهة</div></div>
-        <div class="sc" style="border-top:3px solid #7c3aed"><div class="num">${byStatus.uploaded}</div><div class="lbl">جاهز للاعتماد</div></div>
-        <div class="sc" style="border-top:3px solid var(--ok)"><div class="num">${byStatus.approved}</div><div class="lbl">معتمد</div></div>
-      </div>
-    </div>
-
-    ${total === 0 ? '<div class="card"><div class="empty">✓ لا توجد إجراءات في قاعدة البيانات</div></div>' : `
-    <div style="border:2px solid var(--erbrd);border-radius:var(--r);padding:20px;background:var(--erb)">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span style="font-size:14px;font-weight:700;color:var(--er)">تحذير: هذه العملية لا يمكن التراجع عنها</span>
-      </div>
-      <p style="font-size:13px;color:#7f1d1d;margin-bottom:16px;line-height:1.7">سيتم حذف جميع الإجراءات من قاعدة البيانات نهائياً. لتأكيد العملية اكتب كلمة <strong>مسح</strong> في الحقل أدناه:</p>
-      <div class="fg"><input class="fc" id="clear-confirm" placeholder='اكتب كلمة "مسح" للتأكيد' style="border-color:var(--erbrd)"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-er" onclick="doClearAll()">🗑 مسح جميع الإجراءات نهائياً</button>
-        <button class="btn btn-g" onclick="doClearByStatus('approved')">حذف المعتمدة فقط (${byStatus.approved})</button>
-        <button class="btn btn-g" onclick="doClearByStatus('rejected')">حذف المرجوعة فقط (${byStatus.rejected})</button>
-      </div>
-    </div>`}`;
-}
-window.render_c_clear = render_c_clear;
-
-async function doClearAll() {
-  const confirm_val = document.getElementById('clear-confirm')?.value.trim();
-  if(confirm_val !== 'مسح') { toast('❗ اكتب كلمة "مسح" للتأكيد'); return; }
-  if(!confirm(`حذف جميع الإجراءات (${ALL_ITEMS.length}) نهائياً من Supabase؟`)) return;
-  loading(true, 'جاري مسح جميع الإجراءات...');
-  try {
-    await Promise.all(ALL_ITEMS.map(it => sbDelete('procedures', it.id)));
-    await sbPost('activity_log', {msg:`مسح جميع الإجراءات (${ALL_ITEMS.length} إجراء)`, actor:'عمادة التطوير والجودة'});
-    await loadAll(); loading(false);
-    render_c_clear(); render_c_home();
-    toast('✅ تم مسح جميع الإجراءات', true);
-  } catch(e) { loading(false); toast('❗ فشل المسح: '+e.message); }
-}
-
-async function doClearByStatus(status) {
-  const items = ALL_ITEMS.filter(i=>i.status===status);
-  const labels = {approved:'المعتمدة', rejected:'المرجوعة', pending:'قيد الانتظار', uploaded:'جاهز للاعتماد'};
-  if(!items.length) { toast('لا توجد إجراءات بهذه الحالة'); return; }
-  if(!confirm(`حذف ${items.length} إجراء من ${labels[status]}؟`)) return;
-  loading(true, 'جاري الحذف...');
-  try {
-    await Promise.all(items.map(it => sbDelete('procedures', it.id)));
-    await sbPost('activity_log', {msg:`حذف ${items.length} إجراء (${labels[status]})`, actor:'عمادة التطوير والجودة'});
-    await loadAll(); loading(false);
-    render_c_clear(); render_c_home();
-    toast(`✅ تم حذف ${items.length} إجراء من ${labels[status]}`, true);
-  } catch(e) { loading(false); toast('❗ فشل الحذف: '+e.message); }
-}
-
-// ═══════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════
-window.addEventListener('load', () => {
-  // الصفحة جاهزة — يتم الاتصال بقاعدة البيانات عند تسجيل الدخول
-});
-</script>
-</body>
-</html>
