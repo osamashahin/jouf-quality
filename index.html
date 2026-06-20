@@ -2238,17 +2238,18 @@ function render_c_reviewers() {
     <div class="card">
       <div class="ctit">${ico.ppl}المراجعون الحاليون</div>
       ${rvList.length ? `<div class="tw"><table class="tbl">
-        <thead><tr><th>المراجع</th><th>مفتاح الدخول</th><th>كلمة المرور</th><th>المعايير المخصصة</th><th>إجراء</th></tr></thead>
+        <thead><tr><th>المراجع</th><th>البريد الإلكتروني</th><th>مفتاح الدخول</th><th>كلمة المرور</th><th>المعايير</th><th>إجراءات</th></tr></thead>
         <tbody>
         ${rvList.map(([k,rv])=>`<tr>
           <td style="font-weight:600">👤 ${rv.name}</td>
+          <td style="font-size:11px;direction:ltr;text-align:left">${rv.email||'—'}</td>
           <td style="font-family:monospace;font-size:12px">${k}</td>
           <td style="font-family:monospace;font-size:12px">${rv.pass}</td>
           <td style="font-size:11px">${(rv.criteria||[]).map(cn=>{
             const m=INST_CRITERIA.find(x=>String(x.num)===String(cn));
             return m?`<span class="chip">${m.title}</span>`:'';
           }).join('')}</td>
-          <td><button class="btn btn-er btn-sm" onclick="removeReviewer('${k}')">حذف</button></td>
+          <td style="white-space:nowrap">${rv.email?`<button class="btn btn-g btn-sm" style="margin-left:4px" onclick="sendCredentialsByEmail('${k}')">📧 إرسال</button>`:''}<button class="btn btn-er btn-sm" onclick="removeReviewer('${k}')">حذف</button></td>
         </tr>`).join('')}
         </tbody>
       </table></div>` : '<div class="empty">لا يوجد مراجعون حتى الآن</div>'}
@@ -2259,6 +2260,8 @@ function render_c_reviewers() {
       <div class="notif ni">💡 المراجع يستطيع إرسال الإجراءات واستلام الملفات وتقييمها للمعايير المخصصة له فقط.</div>
       <div class="fg"><label class="fl">اسم المراجع *</label>
         <input class="fc" id="nrv-name" placeholder="مثال: أ. محمد العنزي"></div>
+      <div class="fg"><label class="fl">البريد الإلكتروني *</label>
+        <input class="fc" id="nrv-email" placeholder="example@jouf.edu.sa" type="email" dir="ltr"></div>
       <div class="fg"><label class="fl">مفتاح الدخول (إنجليزي بدون مسافات) *</label>
         <input class="fc" id="nrv-key" placeholder="مثال: reviewer1" dir="ltr"></div>
       <div class="fg"><label class="fl">كلمة المرور *</label>
@@ -2293,24 +2296,57 @@ async function addReviewer() {
     msg.textContent=t;
   };
 
-  if (!name||!key||!pass)       { showMsg('❗ يرجى ملء الاسم والمفتاح وكلمة المرور', false); return; }
+  const email = document.getElementById('nrv-email').value.trim();
+  if (!name||!email||!key||!pass) { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
   if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية', false); return; }
   if (USERS[key])                { showMsg('❗ هذا المفتاح مستخدم بالفعل', false); return; }
   if (!criteria.length)          { showMsg('❗ يرجى تحديد معيار واحد على الأقل', false); return; }
 
   const grad = 'linear-gradient(135deg,#065f46,#059669)';
-  REVIEWERS[key] = {name, pass, criteria, grad};
-  USERS[key] = {pass, name, role:'reviewer', reviewerCriteria:criteria, grad};
+  REVIEWERS[key] = {name, email, pass, criteria, grad};
+  USERS[key] = {pass, name, email, role:'reviewer', reviewerCriteria:criteria, grad};
 
   try {
     await sbUpsert('settings', {key:'reviewers', value:JSON.stringify(REVIEWERS), updated_at:new Date().toISOString()});
     await sbPost('activity_log', {msg:`إضافة مراجع جديد: ${name} (${key}) — معايير: ${criteria.join(', ')}`, actor:'عمادة التطوير والجودة'});
-    showMsg(`✅ تمت إضافة المراجع "${name}" — يمكنه الدخول بـ: ${key} / ${pass}`, true);
+    showMsg(`✅ تمت إضافة المراجع "${name}"`, true);
     document.getElementById('nrv-name').value='';
+    document.getElementById('nrv-email').value='';
     document.getElementById('nrv-key').value='';
     document.getElementById('nrv-pass').value='';
     document.querySelectorAll('.nrv-crit').forEach(c=>c.checked=false);
+    // إضافة زر إرسال بيانات الدخول بعد النجاح
+    const msgEl = document.getElementById('nrv-msg');
+    msgEl.innerHTML += ` <button class="btn btn-g btn-sm" style="margin-right:8px;margin-top:6px" onclick="sendCredentialsByEmail('${key}')">📧 إرسال بيانات الدخول للبريد</button>`;
   } catch(e) { showMsg('❗ فشل الحفظ: '+e.message, false); }
+}
+
+
+// ─── إرسال بيانات دخول المراجع عبر البريد الإلكتروني ───
+function sendCredentialsByEmail(reviewerKey) {
+  const rv = REVIEWERS[reviewerKey];
+  if (!rv || !rv.email) { toast('❗ لا يوجد بريد إلكتروني لهذا المراجع'); return; }
+
+  const critNames = (rv.criteria||[]).map(cn=>{
+    const m = INST_CRITERIA.find(x=>String(x.num)===String(cn));
+    return m ? `معيار ${m.num}: ${m.title}` : cn;
+  }).join('\n- ');
+
+  const subject = encodeURIComponent('بيانات الدخول — نظام متابعة أعمال الجودة — جامعة الجوف');
+  const body = encodeURIComponent(
+    `السلام عليكم ورحمة الله وبركاته\n\n` +
+    `الأستاذ/ة ${rv.name}،\n\n` +
+    `يُرجى الاطلاع على بيانات دخولكم لنظام متابعة أعمال الجودة:\n\n` +
+    `رابط النظام: https://osamashahin.github.io/jouf-quality/\n` +
+    `اسم المستخدم: ${reviewerKey}\n` +
+    `كلمة المرور: ${rv.pass}\n\n` +
+    `المعايير المخصصة لكم:\n- ${critNames}\n\n` +
+    `يُرجى تغيير كلمة المرور بعد أول دخول من شاشة "بياناتي وكلمة المرور".\n\n` +
+    `عمادة التطوير والجودة — جامعة الجوف`
+  );
+
+  window.open(`mailto:${rv.email}?subject=${subject}&body=${body}`, '_blank');
+  toast('✓ تم فتح تطبيق البريد — راجع البريد الجديد واضغط إرسال', true);
 }
 
 async function removeReviewer(key) {
