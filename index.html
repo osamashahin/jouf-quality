@@ -406,11 +406,18 @@ async function loadAll() {
           INST_REQUIREMENTS = val;
         } else if (s.key === 'reviewers') {
           REVIEWERS = val;
-          // Inject reviewers into USERS
           Object.entries(val).forEach(([k, rv]) => {
-            USERS[k] = {pass: rv.pass, name: rv.name, role: 'reviewer',
+            USERS[k] = {pass: rv.pass, name: rv.name, email: rv.email||'', role: 'reviewer',
               reviewerCriteria: rv.criteria || [],
               grad: rv.grad || 'linear-gradient(135deg,#065f46,#059669)'};
+          });
+        } else if (s.key === 'base_users') {
+          // تحديث بيانات المستخدمين الأساسيين من قاعدة البيانات
+          Object.entries(val).forEach(([k, u]) => {
+            if (USERS[k]) {
+              USERS[k].name = u.name;
+              USERS[k].grad = u.grad;
+            }
           });
         }
       } catch(e) {}
@@ -1752,4 +1759,1136 @@ function render_adm_h() {
           const pct=Math.round(cnt/c.items.length*100);
           return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
         }).join('')}
-      <
+      </div>
+    </div>
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.slice(0,15).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد</div>'}
+    </div>`;
+}
+window.render_adm_h = render_adm_h;
+
+function render_adm_all() {
+  const fa=document.getElementById('adm-fa')?.value||'';
+  const fs=document.getElementById('adm-fs')?.value||'';
+  let items=[...ALL_ITEMS];
+  if(fa) items=items.filter(i=>i.agency===fa);
+  if(fs) items=items.filter(i=>i.status===fs);
+  document.getElementById('adm-all').innerHTML=`
+    <div class="ph"><div class="pht"><h1>جميع الإجراءات</h1></div><div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="admExp()">⬇ CSV</button><button class="btn btn-g btn-sm" onclick="admPrint()">🖨</button></div></div>
+    <div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select class="fc" style="width:auto" id="adm-fa" onchange="render_adm_all()"><option value="">جميع الجهات</option><option value="academic">📚</option><option value="main">🏫</option><option value="postgrad">🎓</option></select>
+      <select class="fc" style="width:auto" id="adm-fs" onchange="render_adm_all()"><option value="">جميع الحالات</option><option value="pending">انتظار</option><option value="uploaded">جاهز</option><option value="approved">معتمد</option><option value="rejected">مُرجع</option></select>
+      <button class="btn btn-er btn-sm" onclick="admDelF()">حذف المُصفّى</button>
+    </div></div>
+    <div class="card"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>المعيار</th><th>الإجراء</th><th>المعيار الفرعي</th><th>الجهة</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th><th>الإرسال</th><th>القرار</th><th>×</th></tr></thead><tbody>
+    ${items.length ? items.map((it,i)=>`<tr><td style="font-size:10px;color:var(--mu)">${i+1}</td><td style="font-size:11px">${it.crit_title}</td><td style="font-weight:600;font-size:12px">${it.proc}</td><td style="font-size:10.5px;color:#6d28d9">${it.inst_crit_num?`${it.inst_crit_num}<br><span style="color:var(--mu)">${it.inst_crit_title||''}</span>`:'—'}</td><td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td><td style="font-size:11px;color:var(--mu);max-width:120px">${it.committee_note||'—'}</td><td style="font-size:11px">${it.agency_file_note?'📎 '+it.agency_file_note:'—'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td><td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td><td style="font-size:10px;color:var(--mu)">${fmtDate(it.decided_at)}</td><td><button class="btn btn-er btn-sm" onclick="admD1('${it.id}')">×</button></td></tr>`).join('') : '<tr><td colspan="10" class="empty">لا يوجد</td></tr>'}
+    </tbody></table></div></div>`;
+}
+window.render_adm_all = render_adm_all;
+
+async function admD1(id) {
+  if(!confirm('حذف؟')) return;
+  try { loading(true); await sbDelete('procedures',id); await loadAll(); loading(false); render_adm_all(); render_adm_h(); toast('تم الحذف'); }
+  catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admDelF() {
+  const fa=document.getElementById('adm-fa')?.value, fs=document.getElementById('adm-fs')?.value;
+  if(!fa&&!fs) { toast('حدد تصفية أولاً'); return; }
+  let items=ALL_ITEMS.filter(i=>(fa?i.agency===fa:true)&&(fs?i.status===fs:true));
+  if(!items.length) { toast('لا توجد عناصر'); return; }
+  if(!confirm('حذف '+items.length+' إجراء نهائياً؟')) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it=>sbDelete('procedures',it.id)));
+    await loadAll(); loading(false); render_adm_all(); render_adm_h();
+    toast('تم حذف '+items.length+' إجراء');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+function admExp() {
+  if(!ALL_ITEMS.length) { toast('لا توجد بيانات'); return; }
+  const h=['المعيار','الإجراء','الجهة','الحالة','ملاحظات اللجنة','مستند الجهة','تاريخ الإرسال','تاريخ القرار'];
+  const rows=ALL_ITEMS.map(it=>[it.crit_title,it.proc,it.agency_name,STX[it.status]||'',it.committee_note||'',it.agency_file_note||'',it.sent_at||'',fmtDate(it.decided_at)]);
+  const NL=String.fromCharCode(10);
+  const csv=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join(NL);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download='تقرير_الجودة.csv'; a.click(); toast('✓ تم التصدير',true);
+}
+
+function admPrint() {
+  const w=window.open('','_blank');
+  const rows=ALL_LOGS.map((l,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDate(l.created_at)+'</td><td>'+l.actor+'</td><td>'+l.msg+'</td></tr>').join('');
+  const css='body{font-family:Arial;padding:20px;direction:rtl}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#4a2878;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}';
+  w.document.open();
+  w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>سجل النشاط</title><style>'+css+'</style><h2>سجل النشاط</h2><table><thead><tr><th>#</th><th>التاريخ</th><th>الجهة</th><th>النشاط</th></tr></thead><tbody>'+rows+'</tbody></table>');
+  w.document.close(); w.print();
+}
+
+function render_adm_ag() {
+  document.getElementById('adm-ag').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير الجهات</h1></div></div>
+    ${Object.entries(AGS).map(([k,ag])=>{
+      const ags=ALL_ITEMS.filter(i=>i.agency===k);
+      return `<div class="card" style="border-right:4px solid ${ag.color}"><div class="ctit" style="color:${ag.color}">${ag.icon} ${ag.name}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span class="bdg bs">${ags.length} إجمالي</span><span class="bdg bp">${ags.filter(i=>i.status==='pending').length} انتظار</span>
+        <span class="bdg bu">${ags.filter(i=>i.status==='uploaded').length} جاهز</span><span class="bdg ba">${ags.filter(i=>i.status==='approved').length} معتمد</span>
+        <span class="bdg br">${ags.filter(i=>i.status==='rejected').length} مُرجع</span>
+      </div>
+      ${ags.length ? `<div class="tw"><table class="tbl" style="font-size:11px"><thead><tr><th>المعيار</th><th>الإجراء</th><th>ملاحظات اللجنة</th><th>مستند الجهة</th><th>الحالة</th></tr></thead><tbody>
+        ${ags.map(it=>`<tr><td>${it.crit_title}</td><td>${it.proc}</td><td style="color:var(--mu)">${it.committee_note||'—'}</td><td>${it.agency_file_note?'📎 '+it.agency_file_note:'لم يُرفع'}</td><td><span class="bdg ${SLB[it.status]||''}">${STX[it.status]||''}</span></td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">لا توجد إجراءات</div>'}
+      </div>`;
+    }).join('')}`;
+}
+window.render_adm_ag = render_adm_ag;
+
+function render_adm_cr() {
+  document.getElementById('adm-cr').innerHTML=`<div class="ph"><div class="pht"><h1>تقرير المعايير</h1></div></div><div class="card">
+    ${CRITERIA.map((c,i)=>{
+      const sent=ALL_ITEMS.filter(x=>x.crit_idx===i);
+      const pct=Math.round(sent.length/c.items.length*100);
+      return `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:5px"><span>${c.title}</span><span style="display:flex;gap:5px"><span class="bdg bs">${sent.length}/${c.items.length}</span><span class="bdg ba">${sent.filter(i=>i.status==='approved').length} معتمد</span><span class="bdg bp">${sent.filter(i=>i.status==='pending').length} انتظار</span></span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
+    }).join('')}
+  </div>`;
+}
+window.render_adm_cr = render_adm_cr;
+
+function render_adm_log() {
+  document.getElementById('adm-log').innerHTML=`
+    <div class="ph"><div class="pht"><h1>السجل الكامل</h1><p>Supabase ☁</p></div>
+    <button class="btn btn-er btn-sm" onclick="admClrLog()">مسح السجل</button></div>
+    <div class="card">${ALL_LOGS.length ? ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') : '<div class="empty">لا يوجد</div>'}</div>`;
+}
+window.render_adm_log = render_adm_log;
+
+async function admClrLog() {
+  if(!confirm('مسح كامل سجل النشاط؟')) return;
+  loading(true);
+  try {
+    await sbDeleteAll('activity_log');
+    await loadAll(); loading(false); render_adm_log(); toast('تم مسح السجل');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admRstAll() {
+  if(!confirm('⚠ حذف كل الإجراءات والسجل نهائياً من Supabase؟')) return;
+  loading(true, 'جاري الحذف الكامل...');
+  try {
+    await sbDeleteAll('procedures');
+    await sbDeleteAll('activity_log');
+    await loadAll(); loading(false); render_adm_h(); toast('تم إعادة الضبط الكامل');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+async function admRstItems() {
+  if(!confirm('حذف الإجراءات مع الاحتفاظ بالسجل؟')) return;
+  loading(true);
+  try {
+    await sbDeleteAll('procedures');
+    await loadAll(); loading(false); render_adm_h(); toast('تم حذف الإجراءات');
+  } catch(e) { loading(false); toast('❗ '+e.message); }
+}
+
+
+// ═══════════════════════════════════════════
+//  AGENCY PROFILE — تعديل البيانات وكلمة المرور
+// ═══════════════════════════════════════════
+function render_ag_profile() {
+  const u = USERS[CU.id];
+  document.getElementById('ag-profile').innerHTML = `
+    <div class="ph"><div class="pht"><h1>بياناتي</h1><p>تعديل معلومات الحساب وكلمة المرور</p></div></div>
+
+    <div class="card" style="max-width:520px">
+      <div class="ctit">${ico.ppl}معلومات الحساب</div>
+      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">اسم المستخدم</span>
+          <strong style="font-family:monospace">${CU.id}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
+          <span style="color:var(--mu)">الجهة</span>
+          <strong>${CU.name}</strong>
+        </div>
+      </div>
+
+      <div class="ctit" style="margin-top:8px">${ico.pen}تغيير كلمة المرور</div>
+      <div class="fg">
+        <label class="fl">كلمة المرور الحالية *</label>
+        <input class="fc" type="password" id="prof-old" placeholder="أدخل كلمة المرور الحالية">
+      </div>
+      <div class="fg">
+        <label class="fl">كلمة المرور الجديدة *</label>
+        <input class="fc" type="password" id="prof-new" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)">
+      </div>
+      <div class="fg">
+        <label class="fl">تأكيد كلمة المرور الجديدة *</label>
+        <input class="fc" type="password" id="prof-confirm" placeholder="أعد كتابة كلمة المرور الجديدة">
+      </div>
+      <div id="prof-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="agChangePass()">حفظ كلمة المرور الجديدة</button>
+    </div>`;
+}
+window.render_ag_profile = render_ag_profile;
+
+function agChangePass() {
+  const oldP = document.getElementById('prof-old').value;
+  const newP = document.getElementById('prof-new').value;
+  const conf = document.getElementById('prof-confirm').value;
+  const msg  = document.getElementById('prof-msg');
+
+  const showMsg = (text, ok) => {
+    msg.style.display = 'block';
+    msg.style.background = ok ? 'var(--okb)' : 'var(--erb)';
+    msg.style.color = ok ? 'var(--ok)' : 'var(--er)';
+    msg.style.border = ok ? '1px solid var(--okbrd)' : '1px solid var(--erbrd)';
+    msg.textContent = text;
+  };
+
+  if (!oldP || !newP || !conf) { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
+  if (USERS[CU.id].pass !== oldP) { showMsg('❗ كلمة المرور الحالية غير صحيحة', false); return; }
+  if (newP.length < 6) { showMsg('❗ كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل', false); return; }
+  if (newP !== conf) { showMsg('❗ كلمة المرور الجديدة وتأكيدها غير متطابقين', false); return; }
+  if (newP === oldP) { showMsg('❗ كلمة المرور الجديدة يجب أن تختلف عن الحالية', false); return; }
+
+  // Update in memory
+  USERS[CU.id].pass = newP;
+  document.getElementById('prof-old').value = '';
+  document.getElementById('prof-new').value = '';
+  document.getElementById('prof-confirm').value = '';
+  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
+  // Save permanently to Supabase
+  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+  sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
+}
+
+// ═══════════════════════════════════════════
+//  COMMITTEE — إدارة الجهات + مسح الإجراءات
+// ═══════════════════════════════════════════
+
+// Extra agencies stored in memory (beyond the built-in 3)
+let EXTRA_AGENCIES = {};
+let REVIEWERS = {}; // {userId: {name, pass, criteria:['1','2',...], grad}}
+
+function getAllAgencies() {
+  return {...AGS, ...EXTRA_AGENCIES};
+}
+
+function render_c_agencies() {
+  const all = getAllAgencies();
+  document.getElementById('c-agencies').innerHTML = `
+    <div class="ph"><div class="pht"><h1>إدارة الجهات</h1><p>الجهات المشاركة في النظام — يمكن إضافة جهات جديدة</p></div></div>
+
+    <div class="card">
+      <div class="ctit">${ico.ppl}الجهات الحالية</div>
+      <div class="tw">
+        <table class="tbl">
+          <thead><tr><th>الجهة</th><th>مفتاح الدخول</th><th>كلمة المرور</th><th>الإجراءات المرسلة</th><th>إجراء</th></tr></thead>
+          <tbody>
+          ${Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`
+            <tr>
+              <td style="font-weight:600">${getAllAgencies()[u.agency||k]?.icon||'🏢'} ${u.name}</td>
+              <td style="font-family:monospace;font-size:12px">${k}</td>
+              <td style="font-family:monospace;font-size:12px">${u.pass}</td>
+              <td>${ALL_ITEMS.filter(i=>i.agency===(u.agency||k)).length}</td>
+              <td>${EXTRA_AGENCIES[u.agency||k]?`<button class="btn btn-er btn-sm" onclick="removeAgency('${k}')">حذف</button>`:'<span style="color:var(--mu);font-size:11px">ثابت</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:540px">
+      <div class="ctit">${ico.send}إضافة جهة جديدة</div>
+      <div class="notif ni">💡 بعد الإضافة، يمكن للجهة الجديدة الدخول للنظام باستخدام مفتاح الدخول وكلمة المرور المحددة.</div>
+      <div class="fg"><label class="fl">اسم الجهة *</label><input class="fc" id="nag-name" placeholder="مثال: وكالة الشؤون المالية"></div>
+      <div class="fg"><label class="fl">مفتاح الدخول (بالإنجليزية، بدون مسافات) *</label><input class="fc" id="nag-key" placeholder="مثال: finance" dir="ltr"></div>
+      <div class="fg"><label class="fl">كلمة المرور *</label><input class="fc" id="nag-pass" placeholder="كلمة مرور للجهة" type="text"></div>
+      <div class="fg">
+        <label class="fl">الأيقونة (اختياري)</label>
+        <select class="fc" id="nag-icon">
+          <option value="🏢">🏢 مبنى</option>
+          <option value="📊">📊 إحصاء</option>
+          <option value="💼">💼 أعمال</option>
+          <option value="🔬">🔬 بحث</option>
+          <option value="📚">📚 تعليم</option>
+          <option value="💰">💰 مالية</option>
+          <option value="🤝">🤝 شراكة</option>
+          <option value="🏗">🏗 مشاريع</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">لون الجهة</label>
+        <select class="fc" id="nag-color">
+          <option value="#0891b2">أزرق بترولي</option>
+          <option value="#1d4ed8">أزرق</option>
+          <option value="#7c3aed">بنفسجي</option>
+          <option value="#16a34a">أخضر</option>
+          <option value="#b45309">برتقالي</option>
+          <option value="#be185d">وردي</option>
+          <option value="#374151">رمادي داكن</option>
+        </select>
+      </div>
+      <div id="nag-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="addNewAgency()">إضافة الجهة ←</button>
+    </div>`;
+}
+window.render_c_agencies = render_c_agencies;
+// ─── Committee Profile ───
+function render_c_profile() {
+  document.getElementById('c-profile').innerHTML = `
+    <div class="ph"><div class="pht"><h1>بياناتي</h1><p>تعديل معلومات حساب عمادة التطوير والجودة</p></div></div>
+    <div class="card" style="max-width:520px">
+      <div class="ctit">${ico.ppl}معلومات الحساب</div>
+      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">اسم المستخدم</span>
+          <strong style="font-family:monospace">${CU.id}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
+          <span style="color:var(--mu)">الجهة</span>
+          <strong>${CU.name}</strong>
+        </div>
+      </div>
+      <div class="ctit" style="margin-top:8px">${ico.pen}تغيير كلمة المرور</div>
+      <div class="fg"><label class="fl">كلمة المرور الحالية *</label><input class="fc" type="password" id="cprof-old" placeholder="أدخل كلمة المرور الحالية"></div>
+      <div class="fg"><label class="fl">كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-new" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)"></div>
+      <div class="fg"><label class="fl">تأكيد كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-confirm" placeholder="أعد كتابة كلمة المرور الجديدة"></div>
+      <div id="cprof-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="cChangePass()">حفظ كلمة المرور الجديدة</button>
+    </div>`;
+}
+window.render_c_profile = render_c_profile;
+
+function cChangePass() {
+  const oldP    = document.getElementById('cprof-old').value;
+  const newP    = document.getElementById('cprof-new').value;
+  const conf    = document.getElementById('cprof-confirm').value;
+  const msg     = document.getElementById('cprof-msg');
+  const showMsg = (text, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=text;
+  };
+  if (!oldP||!newP||!conf)          { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
+  if (USERS[CU.id].pass !== oldP)   { showMsg('❗ كلمة المرور الحالية غير صحيحة', false); return; }
+  if (newP.length < 6)              { showMsg('❗ كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل', false); return; }
+  if (newP !== conf)                 { showMsg('❗ كلمة المرور الجديدة وتأكيدها غير متطابقين', false); return; }
+  if (newP === oldP)                 { showMsg('❗ كلمة المرور الجديدة يجب أن تختلف عن الحالية', false); return; }
+  USERS[CU.id].pass = newP;
+  document.getElementById('cprof-old').value='';
+  document.getElementById('cprof-new').value='';
+  document.getElementById('cprof-confirm').value='';
+  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
+  // Save permanently to Supabase
+  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+  sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
+}
+
+
+
+function addNewAgency() {
+  const name  = document.getElementById('nag-name').value.trim();
+  const key   = document.getElementById('nag-key').value.trim().toLowerCase().replace(/\s+/g,'_');
+  const pass  = document.getElementById('nag-pass').value.trim();
+  const icon  = document.getElementById('nag-icon').value;
+  const color = document.getElementById('nag-color').value;
+  const msg   = document.getElementById('nag-msg');
+
+  const showMsg = (text, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=text;
+  };
+
+  if (!name||!key||!pass) { showMsg('❗ يرجى ملء الاسم والمفتاح وكلمة المرور', false); return; }
+  if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية فقط (حروف وأرقام وشرطة سفلية)', false); return; }
+  if (USERS[key]) { showMsg('❗ هذا المفتاح مستخدم بالفعل، اختر مفتاحاً آخر', false); return; }
+  if (pass.length < 4) { showMsg('❗ كلمة المرور يجب أن تكون 4 أحرف على الأقل', false); return; }
+
+  // Add to extra agencies and USERS
+  const grad = `linear-gradient(135deg, ${color}dd, ${color})`;
+  EXTRA_AGENCIES[key] = {name, icon, color};
+  USERS[key] = {pass, name, role:'agency', agency:key, grad};
+
+  sbPost('activity_log', {msg:`إضافة جهة جديدة: ${name} (مفتاح: ${key})`, actor:'عمادة التطوير والجودة'});
+  // Save extra agencies permanently to Supabase
+  const agToSave = {};
+  Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+    agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+  });
+  sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+    .catch(()=>{});
+
+  showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
+  document.getElementById('nag-name').value='';
+  document.getElementById('nag-key').value='';
+  document.getElementById('nag-pass').value='';
+
+  // Refresh selects in send form if visible
+  const csA = document.getElementById('cs-a');
+  if(csA) {
+    const allAg = getAllAgencies();
+    csA.innerHTML='<option value="">— اختر —</option>'+Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`<option value="${u.agency||k}">${allAg[u.agency||k]?.icon||'🏢'} ${u.name}</option>`).join('');
+  }
+}
+
+function removeAgency(key) {
+  const u = USERS[key];
+  if(!u) return;
+  if(!confirm(`حذف جهة "${u.name}"؟ سيتم حذف جميع إجراءاتها أيضاً.`)) return;
+  const agKey = u.agency || key;
+  delete EXTRA_AGENCIES[agKey];
+  delete USERS[key];
+  // Remove their items from DB
+  const toDelete = ALL_ITEMS.filter(i=>i.agency===agKey);
+  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(async ()=>{
+    // Update saved extra agencies
+    const agToSave = {};
+    Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
+      agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
+    });
+    await sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
+      .catch(()=>{});
+    return loadAll();
+  }).then(()=>{
+    render_c_agencies();
+    toast(`تم حذف جهة "${u.name}"`);
+  });
+}
+
+// ─── مسح جميع الإجراءات ───
+function render_c_clear() {
+  const total = ALL_ITEMS.length;
+  const byStatus = {
+    pending:  ALL_ITEMS.filter(i=>i.status==='pending').length,
+    uploaded: ALL_ITEMS.filter(i=>i.status==='uploaded').length,
+    approved: ALL_ITEMS.filter(i=>i.status==='approved').length,
+    rejected: ALL_ITEMS.filter(i=>i.status==='rejected').length,
+  };
+
+  document.getElementById('c-clear').innerHTML = `
+    <div class="ph"><div class="pht"><h1>مسح جميع الإجراءات</h1><p>حذف نهائي لا يمكن التراجع عنه</p></div></div>
+
+    <div class="card">
+      <div class="ctit">${ico.list}الإجراءات الحالية في قاعدة البيانات</div>
+      <div class="sr" style="grid-template-columns:repeat(4,1fr);margin-bottom:0">
+        <div class="sc" style="border-top:3px solid #374151"><div class="num">${total}</div><div class="lbl">إجمالي الإجراءات</div></div>
+        <div class="sc" style="border-top:3px solid var(--wa)"><div class="num">${byStatus.pending}</div><div class="lbl">انتظار الجهة</div></div>
+        <div class="sc" style="border-top:3px solid #7c3aed"><div class="num">${byStatus.uploaded}</div><div class="lbl">جاهز للاعتماد</div></div>
+        <div class="sc" style="border-top:3px solid var(--ok)"><div class="num">${byStatus.approved}</div><div class="lbl">معتمد</div></div>
+      </div>
+    </div>
+
+    ${total === 0 ? '<div class="card"><div class="empty">✓ لا توجد إجراءات في قاعدة البيانات</div></div>' : `
+    <div style="border:2px solid var(--erbrd);border-radius:var(--r);padding:20px;background:var(--erb)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:14px;font-weight:700;color:var(--er)">تحذير: هذه العملية لا يمكن التراجع عنها</span>
+      </div>
+      <p style="font-size:13px;color:#7f1d1d;margin-bottom:16px;line-height:1.7">سيتم حذف جميع الإجراءات من قاعدة البيانات نهائياً. لتأكيد العملية اكتب كلمة <strong>مسح</strong> في الحقل أدناه:</p>
+      <div class="fg"><input class="fc" id="clear-confirm" placeholder='اكتب كلمة "مسح" للتأكيد' style="border-color:var(--erbrd)"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-er" onclick="doClearAll()">🗑 مسح جميع الإجراءات نهائياً</button>
+        <button class="btn btn-g" onclick="doClearByStatus('approved')">حذف المعتمدة فقط (${byStatus.approved})</button>
+        <button class="btn btn-g" onclick="doClearByStatus('rejected')">حذف المرجوعة فقط (${byStatus.rejected})</button>
+      </div>
+    </div>`}`;
+}
+window.render_c_clear = render_c_clear;
+
+async function doClearAll() {
+  const confirm_val = document.getElementById('clear-confirm')?.value.trim();
+  if(confirm_val !== 'مسح') { toast('❗ اكتب كلمة "مسح" للتأكيد'); return; }
+  if(!confirm(`حذف جميع الإجراءات (${ALL_ITEMS.length}) نهائياً من Supabase؟`)) return;
+  loading(true, 'جاري مسح جميع الإجراءات...');
+  try {
+    await Promise.all(ALL_ITEMS.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`مسح جميع الإجراءات (${ALL_ITEMS.length} إجراء)`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast('✅ تم مسح جميع الإجراءات', true);
+  } catch(e) { loading(false); toast('❗ فشل المسح: '+e.message); }
+}
+
+async function doClearByStatus(status) {
+  const items = ALL_ITEMS.filter(i=>i.status===status);
+  const labels = {approved:'المعتمدة', rejected:'المرجوعة', pending:'قيد الانتظار', uploaded:'جاهز للاعتماد'};
+  if(!items.length) { toast('لا توجد إجراءات بهذه الحالة'); return; }
+  if(!confirm(`حذف ${items.length} إجراء من ${labels[status]}؟`)) return;
+  loading(true, 'جاري الحذف...');
+  try {
+    await Promise.all(items.map(it => sbDelete('procedures', it.id)));
+    await sbPost('activity_log', {msg:`حذف ${items.length} إجراء (${labels[status]})`, actor:'عمادة التطوير والجودة'});
+    await loadAll(); loading(false);
+    render_c_clear(); render_c_home();
+    toast(`✅ تم حذف ${items.length} إجراء من ${labels[status]}`, true);
+  } catch(e) { loading(false); toast('❗ فشل الحذف: '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+//  إدارة المراجعين (من شاشة العمادة)
+// ═══════════════════════════════════════════
+function render_c_reviewers() {
+  const rvList = Object.entries(REVIEWERS);
+  document.getElementById('c-reviewers').innerHTML = `
+    <div class="ph"><div class="pht"><h1>إدارة المراجعين</h1><p>أنشئ حسابات للمراجعين وخصص لكل منهم معايير محددة</p></div></div>
+
+    <div class="card">
+      <div class="ctit">${ico.ppl}المراجعون الحاليون</div>
+      ${rvList.length ? `<div class="tw"><table class="tbl">
+        <thead><tr><th>المراجع</th><th>البريد الإلكتروني</th><th>مفتاح الدخول</th><th>كلمة المرور</th><th>المعايير</th><th>إجراءات</th></tr></thead>
+        <tbody>
+        ${rvList.map(([k,rv])=>`<tr>
+          <td style="font-weight:600">👤 ${rv.name}</td>
+          <td style="font-size:11px;direction:ltr;text-align:left">${rv.email||'—'}</td>
+          <td style="font-family:monospace;font-size:12px">${k}</td>
+          <td style="font-family:monospace;font-size:12px">${rv.pass}</td>
+          <td style="font-size:11px">${(rv.criteria||[]).map(cn=>{
+            const m=INST_CRITERIA.find(x=>String(x.num)===String(cn));
+            return m?`<span class="chip">${m.title}</span>`:'';
+          }).join('')}</td>
+          <td style="white-space:nowrap">${rv.email?`<button class="btn btn-g btn-sm" style="margin-left:4px" onclick="sendCredentialsByEmail('${k}')">📧 إرسال</button>`:''}<button class="btn btn-er btn-sm" onclick="removeReviewer('${k}')">حذف</button></td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="empty">لا يوجد مراجعون حتى الآن</div>'}
+    </div>
+
+    <div class="card" style="max-width:580px">
+      <div class="ctit">${ico.send}إضافة مراجع جديد</div>
+      <div class="notif ni">💡 المراجع يستطيع إرسال الإجراءات واستلام الملفات وتقييمها للمعايير المخصصة له فقط.</div>
+      <div class="fg"><label class="fl">اسم المراجع *</label>
+        <input class="fc" id="nrv-name" placeholder="مثال: أ. محمد العنزي"></div>
+      <div class="fg"><label class="fl">البريد الإلكتروني *</label>
+        <input class="fc" id="nrv-email" placeholder="example@jouf.edu.sa" type="email" dir="ltr"></div>
+      <div class="fg"><label class="fl">مفتاح الدخول (إنجليزي بدون مسافات) *</label>
+        <input class="fc" id="nrv-key" placeholder="مثال: reviewer1" dir="ltr"></div>
+      <div class="fg"><label class="fl">كلمة المرور *</label>
+        <input class="fc" id="nrv-pass" placeholder="كلمة مرور للمراجع" type="text"></div>
+      <div class="fg"><label class="fl">المعايير المخصصة * (يمكن تحديد أكثر من معيار)</label>
+        <div style="background:var(--gray);border-radius:8px;padding:10px 12px">
+          ${INST_CRITERIA.map(m=>`
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--bd)">
+            <input type="checkbox" class="nrv-crit" value="${m.num}" style="margin-top:1px">
+            <span><strong>${m.num}:</strong> ${m.title}</span>
+          </label>`).join('')}
+        </div>
+      </div>
+      <div id="nrv-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="addReviewer()">إضافة المراجع ←</button>
+    </div>`;
+}
+window.render_c_reviewers = render_c_reviewers;
+
+async function addReviewer() {
+  const name = document.getElementById('nrv-name').value.trim();
+  const key  = document.getElementById('nrv-key').value.trim().toLowerCase().replace(/\s+/g,'_');
+  const pass = document.getElementById('nrv-pass').value.trim();
+  const criteria = Array.from(document.querySelectorAll('.nrv-crit:checked')).map(c=>c.value);
+  const msg = document.getElementById('nrv-msg');
+
+  const showMsg = (t, ok) => {
+    msg.style.display='block';
+    msg.style.background=ok?'var(--okb)':'var(--erb)';
+    msg.style.color=ok?'var(--ok)':'var(--er)';
+    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
+    msg.textContent=t;
+  };
+
+  const email = document.getElementById('nrv-email').value.trim();
+  if (!name||!email||!key||!pass) { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
+  if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية', false); return; }
+  if (USERS[key])                { showMsg('❗ هذا المفتاح مستخدم بالفعل', false); return; }
+  if (!criteria.length)          { showMsg('❗ يرجى تحديد معيار واحد على الأقل', false); return; }
+
+  const grad = 'linear-gradient(135deg,#065f46,#059669)';
+  REVIEWERS[key] = {name, email, pass, criteria, grad};
+  USERS[key] = {pass, name, email, role:'reviewer', reviewerCriteria:criteria, grad};
+
+  try {
+    await sbUpsert('settings', {key:'reviewers', value:JSON.stringify(REVIEWERS), updated_at:new Date().toISOString()});
+    await sbPost('activity_log', {msg:`إضافة مراجع جديد: ${name} (${key}) — معايير: ${criteria.join(', ')}`, actor:'عمادة التطوير والجودة'});
+    showMsg(`✅ تمت إضافة المراجع "${name}"`, true);
+    document.getElementById('nrv-name').value='';
+    document.getElementById('nrv-email').value='';
+    document.getElementById('nrv-key').value='';
+    document.getElementById('nrv-pass').value='';
+    document.querySelectorAll('.nrv-crit').forEach(c=>c.checked=false);
+    // إضافة زر إرسال بيانات الدخول بعد النجاح
+    const msgEl = document.getElementById('nrv-msg');
+    msgEl.innerHTML += ` <button class="btn btn-g btn-sm" style="margin-right:8px;margin-top:6px" onclick="sendCredentialsByEmail('${key}')">📧 إرسال بيانات الدخول للبريد</button>`;
+  } catch(e) { showMsg('❗ فشل الحفظ: '+e.message, false); }
+}
+
+
+// ─── إرسال بيانات دخول المراجع عبر البريد الإلكتروني ───
+function sendCredentialsByEmail(reviewerKey) {
+  const rv = REVIEWERS[reviewerKey];
+  if (!rv || !rv.email) { toast('❗ لا يوجد بريد إلكتروني لهذا المراجع'); return; }
+
+  const critNames = (rv.criteria||[]).map(cn=>{
+    const m = INST_CRITERIA.find(x=>String(x.num)===String(cn));
+    return m ? `معيار ${m.num}: ${m.title}` : cn;
+  }).join('\n- ');
+
+  const subject = encodeURIComponent('بيانات الدخول — نظام متابعة أعمال الجودة — جامعة الجوف');
+  const body = encodeURIComponent(
+    `السلام عليكم ورحمة الله وبركاته\n\n` +
+    `الأستاذ/ة ${rv.name}،\n\n` +
+    `يُرجى الاطلاع على بيانات دخولكم لنظام متابعة أعمال الجودة:\n\n` +
+    `رابط النظام: https://osamashahin.github.io/jouf-quality/\n` +
+    `اسم المستخدم: ${reviewerKey}\n` +
+    `كلمة المرور: ${rv.pass}\n\n` +
+    `المعايير المخصصة لكم:\n- ${critNames}\n\n` +
+    `يُرجى تغيير كلمة المرور بعد أول دخول من شاشة "بياناتي وكلمة المرور".\n\n` +
+    `عمادة التطوير والجودة — جامعة الجوف`
+  );
+
+  window.open(`mailto:${rv.email}?subject=${subject}&body=${body}`, '_blank');
+  toast('✓ تم فتح تطبيق البريد — راجع البريد الجديد واضغط إرسال', true);
+}
+
+async function removeReviewer(key) {
+  if (!confirm(`حذف المراجع "${REVIEWERS[key]?.name}"؟`)) return;
+  delete REVIEWERS[key];
+  delete USERS[key];
+  await sbUpsert('settings', {key:'reviewers', value:JSON.stringify(REVIEWERS), updated_at:new Date().toISOString()});
+  render_c_reviewers();
+  toast('تم حذف المراجع');
+}
+
+// ═══════════════════════════════════════════
+//  داشبورد المراجع
+// ═══════════════════════════════════════════
+function buildReviewer() {
+  document.getElementById('topbar').style.background = CU.grad;
+
+  // الإجراءات المرتبطة بمعايير المراجع فقط
+  const myCritNums = CU.reviewerCriteria || [];
+
+  document.getElementById('sidebar').innerHTML = `
+    <div class="sbg">الرئيسية</div>
+    <div class="sbi active" onclick="sbAct(this);showScreen('rv-home');render_rv_home()">${ico.grid}نظرة عامة</div>
+    <div class="sbg">الإجراءات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('rv-send');rvBuildSend()">${ico.send}إرسال إجراء</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('rv-appr');render_rv_appr()">${ico.doc}اعتماد الإجراءات<span class="sbdg" id="bdg-rv" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
+    <div class="sbi" onclick="sbAct(this);showScreen('rv-track');render_rv_track()">${ico.list}متابعة الإجراءات</div>
+    <div class="sbg">الحساب</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('rv-profile');render_rv_profile()">${ico.pen}بياناتي وكلمة المرور</div>`;
+
+  document.getElementById('mc').innerHTML = `
+    <div class="screen active" id="rv-home"></div>
+    <div class="screen" id="rv-send"></div>
+    <div class="screen" id="rv-appr"></div>
+    <div class="screen" id="rv-appr-detail"></div>
+    <div class="screen" id="rv-track"></div>
+    <div class="screen" id="rv-profile"></div>`;
+
+  render_rv_home();
+}
+
+// ─── items خاصة بالمراجع (معاييره فقط) ───
+function rvItems() {
+  const myCrits = CU.reviewerCriteria || [];
+  return ALL_ITEMS.filter(it => {
+    const mainNum = String(it.crit_idx + 1);
+    return myCrits.includes(mainNum) || myCrits.includes(it.inst_crit_num?.split('.')[0]);
+  });
+}
+
+function render_rv_home() {
+  const items = rvItems();
+  let pending=0, underReview=0, returned=0, completed=0;
+  items.forEach(it => getReqStatus(it).forEach(r => {
+    if(r.status==='pending') pending++;
+    else if(r.status==='under_review') underReview++;
+    else if(r.status==='returned') returned++;
+    else if(r.status==='completed') completed++;
+  }));
+
+  // Update badge
+  const bdg = document.getElementById('bdg-rv');
+  if (bdg) bdg.textContent = underReview;
+
+  const myCritNums = CU.reviewerCriteria || [];
+  const myCritNames = INST_CRITERIA.filter(m=>myCritNums.includes(String(m.num))).map(m=>m.title);
+
+  document.getElementById('rv-home').innerHTML = `
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1>
+      <p>معاييرك: ${myCritNames.join(' · ') || 'لم تُحدَّد معايير'}</p>
+    </div></div>
+    <div class="sr">
+      <div class="sc" style="border-top:3px solid #065f46"><div class="ico">📤</div><div class="num">${items.length}</div><div class="lbl">إجمالي الإجراءات</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pending}</div><div class="lbl">لم يُرفع بعد</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
+    </div>
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.filter(l=>l.actor===CU.name||l.msg.includes(CU.name)).slice(0,10)
+        .map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg}</div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('')
+        || '<div class="empty">لا يوجد نشاط بعد</div>'}
+    </div>`;
+}
+window.render_rv_home = render_rv_home;
+
+// ─── إرسال إجراء (مقيد بمعايير المراجع) ───
+function rvBuildSend() {
+  const myCritNums = CU.reviewerCriteria || [];
+  const myMains = INST_CRITERIA.filter(m => myCritNums.includes(String(m.num)));
+
+  document.getElementById('rv-send').innerHTML = `
+    <div class="ph"><div class="pht"><h1>إرسال إجراء</h1><p>مقيد بمعاييرك المخصصة</p></div></div>
+    <div class="card" style="max-width:680px">
+      <div class="fg"><label class="fl">المعيار الرئيسي *</label>
+        <select class="fc" id="rv-main" onchange="rvFillSubs()">
+          <option value="">— اختر —</option>
+          ${myMains.map((m,i)=>`<option value="${INST_CRITERIA.indexOf(m)}">معيار ${m.num}: ${m.title}</option>`).join('')}
+        </select></div>
+      <div class="fg"><label class="fl">المعيار الفرعي (الإجراء) *</label>
+        <select class="fc" id="rv-sub" onchange="rvFillCritList()"><option value="">— اختر —</option></select></div>
+      <div class="fg" id="rv-crit-wrap" style="display:none">
+        <label class="fl">المحك *</label>
+        <select class="fc" id="rv-crit" onchange="rvFillReqs()"><option value="">— اختر —</option></select>
+      </div>
+      <div class="fg" id="rv-reqs-wrap" style="display:none">
+        <label class="fl">المتطلبات المرتبطة بهذا المحك</label>
+        <div id="rv-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div>
+      </div>
+      <div class="fg"><label class="fl">الجهة *</label>
+        <select class="fc" id="rv-agency">
+          <option value="">— اختر —</option>
+          <option value="academic">📚 وكالة الجامعة للشؤون التعليمية</option>
+          <option value="main">🏫 وكالة الجامعة</option>
+          <option value="postgrad">🎓 وكالة الجامعة للدراسات العليا والبحث العلمي</option>
+        </select></div>
+      <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
+        <textarea class="fc" id="rv-note" placeholder="اكتب المتطلبات..."></textarea></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" onclick="rvSend()">إرسال ←</button>
+        <button class="btn btn-g" onclick="rvClear()">مسح</button>
+      </div>
+    </div>`;
+}
+
+function rvFillSubs() {
+  const mi = document.getElementById('rv-main').value;
+  const sel = document.getElementById('rv-sub');
+  sel.innerHTML = '<option value="">— اختر —</option>';
+  if (mi !== '') INST_CRITERIA[parseInt(mi)].subs.forEach((s,si)=>{ sel.innerHTML+=`<option value="${mi}-${si}">${s.num} — ${s.title}</option>`; });
+  rvFillCritList();
+}
+function rvFillCritList() {
+  const val = document.getElementById('rv-sub').value;
+  const wrap = document.getElementById('rv-crit-wrap');
+  const sel = document.getElementById('rv-crit');
+  sel.innerHTML = '<option value="">— اختر —</option>';
+  if (!val) { wrap.style.display='none'; rvFillReqs(); return; }
+  const [mi,si]=val.split('-').map(Number);
+  INST_CRITERIA[mi].subs[si].criteria.forEach(c=>{ sel.innerHTML+=`<option value="${c.num}">${c.num} — ${c.title}</option>`; });
+  wrap.style.display='block'; rvFillReqs();
+}
+function rvFillReqs() {
+  const num = document.getElementById('rv-crit').value;
+  const wrap = document.getElementById('rv-reqs-wrap');
+  const box  = document.getElementById('rv-reqs');
+  if (!num) { wrap.style.display='none'; box.innerHTML=''; return; }
+  const reqs = (INST_REQUIREMENTS[num]||[]).filter(r=>r&&r.trim());
+  wrap.style.display='block';
+  box.innerHTML = reqs.length
+    ? reqs.map(r=>`<label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--bd)"><input type="checkbox" class="rv-req-chk" data-crit="${num}" data-title="${esc(findInstCriterion(num)?.title||'')}" value="${esc(r)}" checked style="margin-top:3px"><span>${esc(r)}</span></label>`).join('')
+    : '<div style="font-size:11px;color:var(--mu)">لا توجد متطلبات محددة لهذا المحك</div>';
+}
+function rvClear() {
+  document.getElementById('rv-main').value=''; rvFillSubs();
+  document.getElementById('rv-agency').value=''; document.getElementById('rv-note').value='';
+}
+async function rvSend() {
+  const mi=document.getElementById('rv-main').value, subVal=document.getElementById('rv-sub').value;
+  const critNum=document.getElementById('rv-crit')?.value||'';
+  const ag=document.getElementById('rv-agency').value, note=document.getElementById('rv-note').value.trim();
+  if (!mi||!subVal||!ag)  { toast('❗ يرجى إكمال الحقول المطلوبة'); return; }
+  if (!note)               { toast('❗ يرجى كتابة الملاحظات'); return; }
+  if (!critNum)            { toast('❗ يرجى تحديد المحك'); return; }
+  const [smi,ssi]=subVal.split('-').map(Number);
+  const mainCrit=INST_CRITERIA[smi], subCrit=mainCrit.subs[ssi];
+  const crit=findInstCriterion(critNum);
+  const checkedReqs=Array.from(document.querySelectorAll('.rv-req-chk:checked')).map(c=>c.value);
+  const selectedReqs=[{num:critNum, title:crit?.title||'', reqs:checkedReqs}];
+  const item = {
+    id:'p'+Date.now()+Math.random().toString(36).slice(2,5),
+    crit_idx:smi, crit_title:`معيار ${mainCrit.num}: ${mainCrit.title}`,
+    proc:`${subCrit.num} — ${subCrit.title}`,
+    agency:ag, agency_name:AGS[ag].name,
+    committee_note:note, committee_file:'',
+    agency_file_note:'', agency_uploaded_at:'',
+    agency_note:'', resubmit_count:0,
+    status:'pending', final_note:'', decided_at:'',
+    sent_at:new Date().toLocaleString('ar-SA'),
+    inst_crit_num:critNum, inst_crit_title:crit?.title||'',
+    inst_requirements:JSON.stringify(selectedReqs),
+    req_status:JSON.stringify(selectedReqs[0].reqs.map(()=>({file:'',uploaded_at:'',agency_note:'',committee_note:'',status:'pending'}))),
+    sent_by: CU.id, sent_by_name: CU.name
+  };
+  try {
+    loading(true,'جاري الإرسال...');
+    await sbPost('procedures', item);
+    await sbPost('activity_log', {msg:`[مراجع] إرسال إجراء "${item.proc}" إلى ${item.agency_name}`, actor:CU.name});
+    await loadAll(); loading(false);
+    rvClear(); render_rv_home();
+    toast('✅ تم الإرسال إلى '+item.agency_name, true);
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
+}
+
+// ─── اعتماد الإجراءات (مقيد بمعايير المراجع) ───
+function render_rv_appr() {
+  const rows=[];
+  rvItems().forEach(it=>{
+    const reqs=getReqList(it), rs=getReqStatus(it);
+    reqs.forEach((reqText,idx)=>{ const r=rs[idx]||{status:'pending'};
+      if(r.status==='under_review') rows.push({it,idx,reqText,r}); });
+  });
+  const bdg=document.getElementById('bdg-rv'); if(bdg) bdg.textContent=rows.length;
+  document.getElementById('rv-appr').innerHTML=`
+    <div class="ph"><div class="pht"><h1>اعتماد الإجراءات</h1><p>المتطلبات المرفوعة من الجهات — معاييرك فقط</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_rv_appr();})">🔄</button></div>
+    ${buildFilterBar('rf-appr','render_rv_appr_filtered()')}
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>الحالة</th><th>اطلاع</th></tr></thead>
+      <tbody id="rf-appr-body">${rows.length?rows.map(({it,idx,reqText,r})=>`<tr style="background:#eff6ff">
+        <td style="font-size:11px">${it.inst_crit_num} — ${it.inst_crit_title}</td>
+        <td style="font-size:11px;font-weight:600">${it.proc}</td>
+        <td style="font-size:12px">${reqText}</td>
+        <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+        <td><span class="bdg bu">🔵 تحت المراجعة</span></td>
+        <td><button class="btn btn-p btn-sm" onclick="rvOpenDetail('${it.id}',${idx})">اطلاع</button></td>
+      </tr>`).join(''):'<tr><td colspan="6" class="empty">لا توجد متطلبات تحت المراجعة</td></tr>'}
+      </tbody></table></div></div>`;
+  setTimeout(()=>showFilterCount('rf-appr', rows.length, rows.length),0);
+}
+window.render_rv_appr = render_rv_appr;
+
+function render_rv_appr_filtered() {
+  const allRows=[];
+  rvItems().forEach(it=>{
+    const reqs=getReqList(it),rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    reqs.forEach((reqText,idx)=>{const r=rs[idx]||{status:'pending'};
+      if(r.status==='under_review') allRows.push({it,idx,reqText,r,critLabel});});
+  });
+  const filtered=applyFilters(allRows,'rf-appr');
+  const tbody=document.getElementById('rf-appr-body');
+  if(!tbody) return;
+  tbody.innerHTML=filtered.length?filtered.map(({it,idx,reqText,r})=>`<tr style="background:#eff6ff">
+    <td style="font-size:11px">${it.inst_crit_num} — ${it.inst_crit_title}</td>
+    <td style="font-size:11px;font-weight:600">${it.proc}</td>
+    <td style="font-size:12px">${reqText}</td>
+    <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+    <td><span class="bdg bu">🔵 تحت المراجعة</span></td>
+    <td><button class="btn btn-p btn-sm" onclick="rvOpenDetail('${it.id}',${idx})">اطلاع</button></td>
+  </tr>`).join(''):'<tr><td colspan="6" class="empty">لا توجد نتائج</td></tr>';
+  showFilterCount('rf-appr',filtered.length,allRows.length);
+}
+
+function rvOpenDetail(itemId, idx) {
+  const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const reqs=getReqList(it), rs=getReqStatus(it), r=rs[idx]||{};
+  document.getElementById('rv-appr-detail').innerHTML=`
+    <div class="ph"><div class="pht"><h1>اطلاع على المتطلب</h1></div>
+    <button class="btn btn-g btn-sm" onclick="showScreen('rv-appr');render_rv_appr()">← رجوع</button></div>
+    <div class="card" style="max-width:640px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:12px">
+        <div><span style="color:var(--mu)">المعيار الفرعي:</span><br><strong>${it.inst_crit_num} — ${it.inst_crit_title}</strong></div>
+        <div><span style="color:var(--mu)">المحك:</span><br><strong>${it.proc}</strong></div>
+        <div><span style="color:var(--mu)">الجهة:</span><br><strong>${AGS[it.agency]?.icon||''} ${it.agency_name}</strong></div>
+        <div><span style="color:var(--mu)">المتطلب:</span><br><strong>${reqs[idx]}</strong></div>
+      </div>
+      ${r.file?`<div class="notif nok" style="margin-bottom:14px">📎 الملف المرفوع: <strong>${r.file}</strong>
+        ${r.file_url?`<a href="${r.file_url}" target="_blank" class="btn btn-g btn-sm" style="margin-right:10px">⬇ تنزيل</a>`:''}
+        <span style="color:var(--mu);font-size:10px;display:block;margin-top:4px">رُفع في: ${fmtDate(r.uploaded_at)}</span></div>`:''}
+      ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 13px;margin-bottom:14px;font-size:12px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong><br>${r.agency_note}</div>`:''}
+      <div class="fg"><label class="fl">ملاحظة عند الإعادة (اختياري)</label>
+        <textarea class="fc" id="rvd-note-${itemId}-${idx}" placeholder="اكتب ملاحظتك للجهة..."></textarea></div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ok" onclick="rvDecide('${itemId}',${idx},'completed')">✅ مكتمل</button>
+        <button class="btn btn-er" onclick="rvDecide('${itemId}',${idx},'returned')">↩ معاد وفق الملاحظات</button>
+      </div>
+    </div>`;
+  showScreen('rv-appr-detail');
+}
+
+async function rvDecide(itemId, idx, decision) {
+  const note=(document.getElementById(`rvd-note-${itemId}-${idx}`)?.value||'').trim();
+  const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const rs=getReqStatus(it);
+  rs[idx].status=decision;
+  rs[idx].committee_note=decision==='returned'?note:'';
+  rs[idx].reviewed_by=CU.name;
+  try {
+    loading(true,'جاري حفظ القرار...');
+    await sbPatch('procedures', itemId, {req_status:JSON.stringify(rs)});
+    const label=decision==='completed'?'اعتماد':'إعادة للملاحظات';
+    const reqs=getReqList(it);
+    // إشعار للعمادة في سجل النشاط
+    await sbPost('activity_log', {
+      msg:`[مراجع — ${CU.name}] ${label}: "${reqs[idx]}" من إجراء "${it.proc}" (${it.agency_name})`,
+      actor:CU.name
+    });
+    await loadAll(); loading(false);
+    showScreen('rv-appr'); render_rv_appr(); render_rv_home();
+    toast(decision==='completed'?'✅ تم اعتماد المتطلب':'↩ تم الإعادة للجهة', decision==='completed');
+  } catch(e) { loading(false); toast('❗ فشل: '+e.message); }
+}
+
+// ─── متابعة الإجراءات (مقيدة بمعايير المراجع) ───
+function render_rv_track() {
+  const rows=[];
+  rvItems().forEach(it=>{
+    const reqs=getReqList(it), rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    reqs.forEach((reqText,idx)=>{ const r=rs[idx]||{status:'pending'};
+      rows.push({it,idx,reqText,r,critLabel}); });
+  });
+  document.getElementById('rv-track').innerHTML=`
+    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_rv_track();})">🔄</button></div>
+    ${buildFilterBar('rf-track','render_rv_track_filtered()')}
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>الحالة</th></tr></thead>
+      <tbody id="rf-track-body">${rows.length?rows.map(({it,idx,reqText,r,critLabel})=>{
+        let badge='';
+        if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+        else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+        else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
+        return `<tr>
+          <td style="font-size:11px">${critLabel}</td>
+          <td style="font-size:11px;font-weight:600">${it.proc}</td>
+          <td style="font-size:12px">${reqText}</td>
+          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+          <td>${badge}</td></tr>
+          ${r.status==='returned'&&r.committee_note?`<tr><td colspan="5" style="font-size:11px;color:#b91c1c;padding-right:12px;padding-bottom:8px">↩ ${r.committee_note}</td></tr>`:''}`;
+      }).join(''):'<tr><td colspan="5" class="empty">لا توجد إجراءات بعد</td></tr>'}
+      </tbody></table></div></div>`;
+  setTimeout(()=>showFilterCount('rf-track',rows.length,rows.length),0);
+}
+window.render_rv_track = render_rv_track;
+
+function render_rv_track_filtered() {
+  const allRows=[];
+  rvItems().forEach(it=>{
+    const reqs=getReqList(it),rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    reqs.forEach((reqText,idx)=>{const r=rs[idx]||{status:'pending'};
+      allRows.push({it,idx,reqText,r,critLabel});});
+  });
+  const filtered=applyFilters(allRows,'rf-track');
+  const tbody=document.getElementById('rf-track-body');
+  if(!tbody) return;
+  tbody.innerHTML=filtered.length?filtered.map(({it,idx,reqText,r,critLabel})=>{
+    let badge='';
+    if(r.status==='pending') badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
+    else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
+    return `<tr><td style="font-size:11px">${critLabel}</td>
+      <td style="font-size:11px;font-weight:600">${it.proc}</td>
+      <td style="font-size:12px">${reqText}</td>
+      <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+      <td>${badge}</td></tr>
+      ${r.status==='returned'&&r.committee_note?`<tr><td colspan="5" style="font-size:11px;color:#b91c1c;padding-right:12px">↩ ${r.committee_note}</td></tr>`:''}`;
+  }).join(''):'<tr><td colspan="5" class="empty">لا توجد نتائج</td></tr>';
+  showFilterCount('rf-track',filtered.length,allRows.length);
+}
+
+// ─── بيانات المراجع ───
+function render_rv_profile() {
+  document.getElementById('rv-profile').innerHTML=`
+    <div class="ph"><div class="pht"><h1>بياناتي</h1></div></div>
+    <div class="card" style="max-width:520px">
+      <div class="ctit">${ico.ppl}معلومات الحساب</div>
+      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">اسم المستخدم</span><strong style="font-family:monospace">${CU.id}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
+          <span style="color:var(--mu)">الاسم</span><strong>${CU.name}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
+          <span style="color:var(--mu)">المعايير المخصصة</span>
+          <span>${(CU.reviewerCriteria||[]).map(n=>{const m=INST_CRITERIA.find(x=>String(x.num)===n);return m?`<span class="chip">${m.title}</span>`:n;}).join('')}</span>
+        </div>
+      </div>
+      <div class="ctit">${ico.pen}تغيير كلمة المرور</div>
+      <div class="fg"><label class="fl">كلمة المرور الحالية *</label><input class="fc" type="password" id="rvp-old"></div>
+      <div class="fg"><label class="fl">كلمة المرور الجديدة *</label><input class="fc" type="password" id="rvp-new"></div>
+      <div class="fg"><label class="fl">تأكيد كلمة المرور *</label><input class="fc" type="password" id="rvp-conf"></div>
+      <div id="rvp-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+      <button class="btn btn-p" onclick="rvChangePass()">حفظ كلمة المرور الجديدة</button>
+    </div>`;
+}
+window.render_rv_profile = render_rv_profile;
+
+function rvChangePass() {
+  const oldP=document.getElementById('rvp-old').value, newP=document.getElementById('rvp-new').value, conf=document.getElementById('rvp-conf').value;
+  const msg=document.getElementById('rvp-msg');
+  const showMsg=(t,ok)=>{msg.style.display='block';msg.style.background=ok?'var(--okb)':'var(--erb)';msg.style.color=ok?'var(--ok)':'var(--er)';msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';msg.textContent=t;};
+  if(!oldP||!newP||!conf)        {showMsg('❗ يرجى ملء جميع الحقول',false);return;}
+  if(USERS[CU.id].pass!==oldP)   {showMsg('❗ كلمة المرور الحالية غير صحيحة',false);return;}
+  if(newP.length<6)               {showMsg('❗ كلمة المرور يجب أن تكون 6 أحرف على الأقل',false);return;}
+  if(newP!==conf)                  {showMsg('❗ كلمتا المرور غير متطابقتين',false);return;}
+  USERS[CU.id].pass=newP;
+  if(REVIEWERS[CU.id]) REVIEWERS[CU.id].pass=newP;
+  showMsg('✅ تم تغيير كلمة المرور وحُفظت بشكل دائم',true);
+  sbUpsert('settings',{key:'reviewers',value:JSON.stringify(REVIEWERS),updated_at:new Date().toISOString()}).catch(()=>{});
+  sbUpsert('settings',{key:`pass_${CU.id}`,value:JSON.stringify({pass:newP}),updated_at:new Date().toISOString()}).catch(()=>{});
+}
+
+
+
+// ═══════════════════════════════════════════
+//  نظام الفلترة المشترك للجداول
+// ═══════════════════════════════════════════
+function buildFilterBar(id, onchange) {
+  // جمع كل القيم الممكنة من ALL_ITEMS
+  const agencies = [...new Set(ALL_ITEMS.map(i=>i.agency_name).filter(Boolean))];
+  const statuses = [
+    {v:'pending',      l:'⬜ لم يُرفع'},
+    {v:'under_review', l:'🔵 تحت المراجعة'},
+    {v:'returned',     l:'↩ معاد للملاحظات'},
+    {v:'completed',    l:'✅ مكتمل'},
+  ];
+  return `
+  <div class="card" style="margin-bottom:10px">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+      <div style="flex:1;min-width:140px">
+        <label class="fl">🔍 بحث نصي</label>
+        <input class="fc" id="${id}-q" placeholder="محك / متطلب / جهة..." oninput="${onchange}">
+      </div>
+      <div style="min-width:130px">
+        <label class="fl">الحالة</label>
+        <select class="fc" id="${id}-status" onchange="${onchange}">
+          <option value="">كل الحالات</option>
+          ${statuses.map(s=>`<option value="${s.v}">${s.l}</option>`).join('')}
+        </select>
+      </div>
+      <div style="min-width:160px">
+        <label class="fl">الجهة</label>
+        <select class="fc" id="${id}-agency" onchange="${onchange}">
+          <option value="">كل الجهات</option>
+          ${agencies.map(a=>`<option value="${a}">${a}</option>`).join('')}
+        </select>
+      </div>
+      <div style="min-width:120px">
+        <label class="fl">من تاريخ</label>
+        <input class="fc" type="date" id="${id}-from" onchange="${onchange}">
+      </div>
+      <div style="min-width:120px">
+        <label class="fl">إلى تاريخ</label>
+        <input class="fc" type="date" id="${id}-to" onchange="${onchange}">
+      </div>
+      <button class="btn btn-g btn-sm" onclick="clearFilter('${id}','${onchange}')" style="margin-bottom:1px">✕ مسح</button>
+    </div>
+    <div id="${id}-count" style="font-size:11px;color:var(--mu);margin-top:6px"></div>
+  </div>`;
+}
+
+function clearFilter(id, onchange) {
+  document.getElementById(id+'-q').value='';
+  document.getElementById(id+'-status').value='';
+  document.getElementById(id+'-agency').value='';
+  document.getElementById(id+'-from').value='';
+  document.getElementById(id+'-to').value='';
+  eval(onchange);
+}
+
+function getFilterVals(id) {
+  return {
+    q:      (document.getElementById(id+'-q')?.value||'').trim().toLowerCase(),
+    status: document.getElementById(id+'-status')?.value||'',
+    agency: document.getElementById(id+'-agency')?.value||'',
+    from:   document.getElementById(id+'-from')?.value||'',
+    to:     document.getElementById(id+'-to')?.value||'',
+  };
+}
+
+function applyFilters(rows, id) {
+  const f = getFilterVals(id);
+  return rows.filter(({it, idx, reqText, r, critLabel}) => {
+    // نص البحث
+    if (f.q) {
+      const hay = [
+        critLabel||'', reqText||'', it.proc||'', it.agency_name||'',
+        it.crit_title||'', it.inst_crit_title||'', r.committee_note||'', r.agency_note||''
+      ].join(' ').toLowerCase();
+      if (!hay.includes(f.q)) return false;
+    }
+    // الحالة
+    if (f.status && (r.status||'pending') !== f.status) return false;
+    // الجهة
+    if (f.agency && it.agency_name !== f.agency) return false;
+    // التاريخ
+    if (f.from || f.to) {
+      const uploadedDate = r.uploaded_at ? r.uploaded_at.split('T')[0] : (it.sent_at ? it.sent_at.substring(0,10) : '');
+      if (f.from && uploadedDate && uploadedDate < f.from) return false;
+      if (f.to   && uploadedDate && uploadedDate > f.to)   return false;
+    }
+    return true;
+  });
+}
+
+function showFilterCount(id, filtered, total) {
+  const el = document.getElementById(id+'-count');
+  if (el) el.textContent = filtered < total ? `${filtered} نتيجة من أصل ${total}` : `${total} نتيجة`;
+}
+
+// ─── حفظ كلمات المرور الأصلية في Supabase عند أول دخول ───
+async function saveInitialPasswords() {
+  try {
+    const existing = await sbGet('settings', 'select=key');
+    const savedKeys = new Set((existing||[]).map(r=>r.key));
+    const toSave = [];
+
+    // حفظ كلمات المرور
+    Object.entries(USERS).forEach(([k,u]) => {
+      if (!savedKeys.has(`pass_${k}`)) {
+        toSave.push(sbUpsert('settings', {
+          key: `pass_${k}`,
+          value: JSON.stringify({pass: u.pass}),
+          updated_at: new Date().toISOString()
+        }));
+      }
+    });
+
+    // حفظ بيانات المستخدمين الأساسيين (أول مرة فقط)
+    if (!savedKeys.has('base_users')) {
+      const baseUsers = {};
+      Object.entries(USERS).forEach(([k,u]) => {
+        if (['committee','academic','main','postgrad','admin'].includes(k)) {
+          baseUsers[k] = {name: u.name, role: u.role, agency: u.agency||'', grad: u.grad};
+        }
+      });
+      toSave.push(sbUpsert('settings', {
+        key: 'base_users',
+        value: JSON.stringify(baseUsers),
+        updated_at: new Date().toISOString()
+      }));
+    }
+
+    if (toSave.length) await Promise.all(toSave);
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+  // الصفحة جاهزة — يتم الاتصال بقاعدة البيانات عند تسجيل الدخول
+});
+</script>
+</body>
+</html>
