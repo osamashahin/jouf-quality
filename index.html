@@ -404,6 +404,14 @@ async function loadAll() {
           INST_CRITERIA = val;
         } else if (s.key === 'institutional_requirements') {
           INST_REQUIREMENTS = val;
+        } else if (s.key === 'reviewers') {
+          REVIEWERS = val;
+          // Inject reviewers into USERS
+          Object.entries(val).forEach(([k, rv]) => {
+            USERS[k] = {pass: rv.pass, name: rv.name, role: 'reviewer',
+              reviewerCriteria: rv.criteria || [],
+              grad: rv.grad || 'linear-gradient(135deg,#065f46,#059669)'};
+          });
         }
       } catch(e) {}
     });
@@ -494,9 +502,12 @@ async function enterApp() {
   loading(true, 'جاري تحميل البيانات...');
   try {
     await loadAll();
+    // حفظ كلمات المرور الأصلية إن لم تكن محفوظة
+    await saveInitialPasswords();
     loading(false);
     if(CU.role==='committee') buildCommittee();
     else if(CU.role==='agency') buildAgency();
+    else if(CU.role==='reviewer') buildReviewer();
     else buildAdmin();
     if(refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(async()=>{ await loadAll(); refreshUI(); }, 30000);
@@ -525,6 +536,7 @@ function buildCommittee() {
     <div class="sbi" onclick="sbAct(this);showScreen('c-log');render_c_log()">${ico.pen}سجل النشاط</div>
     <div class="sbg">الإعدادات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-agencies');render_c_agencies()">${ico.ppl}إدارة الجهات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('c-reviewers');render_c_reviewers()">${ico.ppl}إدارة المراجعين</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-profile');render_c_profile()">${ico.pen}بياناتي وكلمة المرور</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-clear');render_c_clear()" style="color:#dc2626">${ico.trash}مسح جميع الإجراءات</div>`;
 
@@ -568,6 +580,7 @@ function buildCommittee() {
     <div class="screen" id="c-appr"></div>
     <div class="screen" id="c-appr-detail"></div>
     <div class="screen" id="c-track"></div>
+    <div class="screen" id="c-reviewers"></div>
     <div class="screen" id="c-log"></div>`;
 
   render_c_home(); updateBadges();
@@ -1050,22 +1063,18 @@ function render_c_appr() {
   const ba = document.getElementById('bdg-a');
   if (ba) ba.textContent = underReviewCount;
 
+  const allRows = rows;
   document.getElementById('c-appr').innerHTML = `
-    <div class="ph"><div class="pht"><h1>اعتماد الإجراءات</h1><p>جميع المتطلبات المرفوعة من الجهات — اضغط "اطلاع" لمراجعة المرفق واتخاذ القرار</p></div>
+    <div class="ph"><div class="pht"><h1>اعتماد الإجراءات</h1><p>جميع المتطلبات المرفوعة من الجهات</p></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_appr();updateBadges();toast('تم التحديث')})">🔄</button></div>
-
+    ${buildFilterBar('cf-appr','render_c_appr_filtered()')}
     <div class="card"><div class="tw"><table class="tbl">
       <thead><tr>
-        <th>المعيار</th>
-        <th>المعيار الفرعي</th>
-        <th>المحك</th>
-        <th>المتطلب</th>
-        <th>الجهة</th>
-        <th>الحالة</th>
-        <th>اطلاع</th>
+        <th>المعيار</th><th>المعيار الفرعي</th><th>المحك</th>
+        <th>المتطلب</th><th>الجهة</th><th>الحالة</th><th>اطلاع</th>
       </tr></thead>
-      <tbody>
-      ${rows.length ? rows.map(({it, idx, reqText, r}) => {
+      <tbody id="cf-appr-body">
+      ${allRows.length ? allRows.map(({it, idx, reqText, r}) => {
         let badge = '';
         if      (r.status==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
         else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد</span>';
@@ -1085,8 +1094,37 @@ function render_c_appr() {
       }).join('') : '<tr><td colspan="7" class="empty">لا توجد مرفقات واردة بعد</td></tr>'}
       </tbody>
     </table></div></div>`;
+  setTimeout(()=>showFilterCount('cf-appr', allRows.length, allRows.length), 0);
 }
 window.render_c_appr = render_c_appr;
+
+function render_c_appr_filtered() {
+  const allRows = [];
+  ALL_ITEMS.forEach(it => {
+    const reqs=getReqList(it), rs=getReqStatus(it);
+    reqs.forEach((reqText,idx)=>{ const r=rs[idx]||{status:'pending'};
+      if(r.status!=='pending') allRows.push({it,idx,reqText,r,critLabel:it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc}); });
+  });
+  const filtered = applyFilters(allRows, 'cf-appr');
+  const tbody = document.getElementById('cf-appr-body');
+  if (!tbody) return;
+  tbody.innerHTML = filtered.length ? filtered.map(({it,idx,reqText,r})=>{
+    let badge='';
+    if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
+    else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
+    return `<tr style="${r.status==='under_review'?'background:#eff6ff':''}">
+      <td style="font-size:11px">${it.crit_title||'—'}</td>
+      <td style="font-size:11px">${it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:'—'}</td>
+      <td style="font-size:11px;font-weight:600">${it.proc||'—'}</td>
+      <td style="font-size:12px">${reqText}</td>
+      <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+      <td>${badge}</td>
+      <td>${r.status!=='completed'?`<button class="btn btn-p btn-sm" onclick="cOpenReqDetail('${it.id}',${idx})">اطلاع</button>`:'<span style="font-size:11px;color:var(--ok)">✓ منتهي</span>'}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" class="empty">لا توجد نتائج مطابقة</td></tr>';
+  showFilterCount('cf-appr', filtered.length, allRows.length);
+}
 
 // ─── صفحة الاطلاع والقرار ───
 function cOpenReqDetail(itemId, idx) {
@@ -1170,29 +1208,23 @@ function render_c_track() {
   });
 
   document.getElementById('c-track').innerHTML = `
-    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>التاريخ الكامل لكل متطلب منذ الإرسال حتى الاعتماد</p></div>
+    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>التاريخ الكامل لكل متطلب</p></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_track();toast('تم التحديث')})">🔄</button></div>
-
+    ${buildFilterBar('cf-track','render_c_track_filtered()')}
     <div class="card"><div class="tw"><table class="tbl">
       <thead><tr>
-        <th>المعيار</th>
-        <th>المعيار الفرعي</th>
-        <th>المحك</th>
-        <th>المتطلب</th>
-        <th>الجهة</th>
-        <th>تاريخ الإرسال</th>
-        <th>تاريخ الرفع</th>
-        <th>ملاحظة الجهة</th>
-        <th>ملاحظة العمادة</th>
-        <th>الحالة</th>
+        <th>المعيار</th><th>المعيار الفرعي</th><th>المحك</th>
+        <th>المتطلب</th><th>الجهة</th><th>تاريخ الإرسال</th>
+        <th>تاريخ الرفع</th><th>ملاحظة الجهة</th><th>ملاحظة العمادة</th><th>الحالة</th>
       </tr></thead>
-      <tbody>
+      <tbody id="cf-track-body">
       ${rows.length ? rows.map(({it, idx, reqText, r}) => {
         let badge = '';
         if      (r.status==='pending')      badge = '<span class="bdg bs">⬜ لم يُرفع</span>';
         else if (r.status==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
         else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد</span>';
         else if (r.status==='completed')    badge = '<span class="bdg ba">✅ مكتمل</span>';
+        const reviewerTag = r.reviewed_by ? `<span style="font-size:10px;color:#065f46;display:block">👤 ${r.reviewed_by}</span>` : '';
         return `<tr>
           <td style="font-size:11px">${it.crit_title||'—'}</td>
           <td style="font-size:11px">${it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : '—'}</td>
@@ -1203,13 +1235,48 @@ function render_c_track() {
           <td style="font-size:10px;color:var(--mu)">${r.uploaded_at ? fmtDate(r.uploaded_at) : '—'}</td>
           <td style="font-size:11px;color:#15803d">${r.agency_note||'—'}</td>
           <td style="font-size:11px;color:#b91c1c">${r.committee_note||'—'}</td>
-          <td>${badge}</td>
+          <td>${badge}${reviewerTag}</td>
         </tr>`;
       }).join('') : '<tr><td colspan="10" class="empty">لا توجد إجراءات بعد</td></tr>'}
       </tbody>
     </table></div></div>`;
+  setTimeout(()=>showFilterCount('cf-track', rows.length, rows.length), 0);
 }
 window.render_c_track = render_c_track;
+
+function render_c_track_filtered() {
+  const allRows = [];
+  ALL_ITEMS.forEach(it => {
+    const reqs=getReqList(it), rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    reqs.forEach((reqText,idx)=>{ const r=rs[idx]||{status:'pending'};
+      allRows.push({it,idx,reqText,r,critLabel}); });
+  });
+  const filtered = applyFilters(allRows, 'cf-track');
+  const tbody = document.getElementById('cf-track-body');
+  if (!tbody) return;
+  tbody.innerHTML = filtered.length ? filtered.map(({it,idx,reqText,r})=>{
+    let badge='';
+    if(r.status==='pending') badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
+    else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
+    const reviewerTag=r.reviewed_by?`<span style="font-size:10px;color:#065f46;display:block">👤 ${r.reviewed_by}</span>`:'';
+    return `<tr>
+      <td style="font-size:11px">${it.crit_title||'—'}</td>
+      <td style="font-size:11px">${it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:'—'}</td>
+      <td style="font-size:11px;font-weight:600">${it.proc||'—'}</td>
+      <td style="font-size:12px">${reqText}</td>
+      <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+      <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+      <td style="font-size:10px;color:var(--mu)">${r.uploaded_at?fmtDate(r.uploaded_at):'—'}</td>
+      <td style="font-size:11px;color:#15803d">${r.agency_note||'—'}</td>
+      <td style="font-size:11px;color:#b91c1c">${r.committee_note||'—'}</td>
+      <td>${badge}${reviewerTag}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="10" class="empty">لا توجد نتائج مطابقة</td></tr>';
+  showFilterCount('cf-track', filtered.length, allRows.length);
+}
 
 
 function render_c_all() {
@@ -1572,9 +1639,10 @@ function render_ag_track() {
   document.getElementById('ag-track').innerHTML = `
     <div class="ph"><div class="pht"><h1>تتبع الإجراءات</h1></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_track();toast('تم التحديث')})">🔄</button></div>
+    ${buildFilterBar('af-track','render_ag_track_filtered()')}
     <div class="card"><div class="tw"><table class="tbl">
       <thead><tr><th>المحك</th><th>المتطلب</th><th>الحالة</th></tr></thead>
-      <tbody>
+      <tbody id="af-track-body">
       ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => {
         const st = r.status || 'pending';
         let badge = '';
@@ -1594,8 +1662,36 @@ function render_ag_track() {
       }).join('') : '<tr><td colspan="3" class="empty">لا توجد إجراءات مُرسلة بعد</td></tr>'}
       </tbody>
     </table></div></div>`;
+  setTimeout(()=>showFilterCount('af-track',rows.length,rows.length),0);
 }
 window.render_ag_track = render_ag_track;
+
+function render_ag_track_filtered() {
+  const allRows=[];
+  mine().forEach(it=>{
+    const reqs=getReqList(it),rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    reqs.forEach((reqText,idx)=>{const r=rs[idx]||{status:'pending'};
+      allRows.push({it,idx,reqText,r,critLabel});});
+  });
+  const filtered=applyFilters(allRows,'af-track');
+  const tbody=document.getElementById('af-track-body');
+  if(!tbody) return;
+  tbody.innerHTML=filtered.length?filtered.map(({reqText,r,critLabel})=>{
+    let badge='';
+    const st=r.status||'pending';
+    if(st==='pending') badge='<span class="bdg bs">⬜ غير مكتمل</span>';
+    else if(st==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(st==='returned') badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+    else if(st==='completed') badge='<span class="bdg ba">✅ مكتملة</span>';
+    return `<tr>
+      <td style="font-weight:600;font-size:12px">${critLabel}</td>
+      <td style="font-size:12px">${reqText}</td>
+      <td>${badge}</td></tr>
+      ${st==='returned'&&r.committee_note?`<tr><td colspan="3" style="font-size:11px;color:#b91c1c;padding-right:28px">↩ ملاحظة: ${r.committee_note}</td></tr>`:''}`;
+  }).join(''):'<tr><td colspan="3" class="empty">لا توجد نتائج</td></tr>';
+  showFilterCount('af-track',filtered.length,allRows.length);
+}
 
 
 // ═══════════════════════════════════════════
@@ -1868,6 +1964,7 @@ function agChangePass() {
 
 // Extra agencies stored in memory (beyond the built-in 3)
 let EXTRA_AGENCIES = {};
+let REVIEWERS = {}; // {userId: {name, pass, criteria:['1','2',...], grad}}
 
 function getAllAgencies() {
   return {...AGS, ...EXTRA_AGENCIES};
@@ -1923,219 +2020,3 @@ function render_c_agencies() {
           <option value="#1d4ed8">أزرق</option>
           <option value="#7c3aed">بنفسجي</option>
           <option value="#16a34a">أخضر</option>
-          <option value="#b45309">برتقالي</option>
-          <option value="#be185d">وردي</option>
-          <option value="#374151">رمادي داكن</option>
-        </select>
-      </div>
-      <div id="nag-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
-      <button class="btn btn-p" onclick="addNewAgency()">إضافة الجهة ←</button>
-    </div>`;
-}
-window.render_c_agencies = render_c_agencies;
-// ─── Committee Profile ───
-function render_c_profile() {
-  document.getElementById('c-profile').innerHTML = `
-    <div class="ph"><div class="pht"><h1>بياناتي</h1><p>تعديل معلومات حساب عمادة التطوير والجودة</p></div></div>
-    <div class="card" style="max-width:520px">
-      <div class="ctit">${ico.ppl}معلومات الحساب</div>
-      <div style="background:var(--gray);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px">
-          <span style="color:var(--mu)">اسم المستخدم</span>
-          <strong style="font-family:monospace">${CU.id}</strong>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px">
-          <span style="color:var(--mu)">الجهة</span>
-          <strong>${CU.name}</strong>
-        </div>
-      </div>
-      <div class="ctit" style="margin-top:8px">${ico.pen}تغيير كلمة المرور</div>
-      <div class="fg"><label class="fl">كلمة المرور الحالية *</label><input class="fc" type="password" id="cprof-old" placeholder="أدخل كلمة المرور الحالية"></div>
-      <div class="fg"><label class="fl">كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-new" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)"></div>
-      <div class="fg"><label class="fl">تأكيد كلمة المرور الجديدة *</label><input class="fc" type="password" id="cprof-confirm" placeholder="أعد كتابة كلمة المرور الجديدة"></div>
-      <div id="cprof-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
-      <button class="btn btn-p" onclick="cChangePass()">حفظ كلمة المرور الجديدة</button>
-    </div>`;
-}
-window.render_c_profile = render_c_profile;
-
-function cChangePass() {
-  const oldP    = document.getElementById('cprof-old').value;
-  const newP    = document.getElementById('cprof-new').value;
-  const conf    = document.getElementById('cprof-confirm').value;
-  const msg     = document.getElementById('cprof-msg');
-  const showMsg = (text, ok) => {
-    msg.style.display='block';
-    msg.style.background=ok?'var(--okb)':'var(--erb)';
-    msg.style.color=ok?'var(--ok)':'var(--er)';
-    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
-    msg.textContent=text;
-  };
-  if (!oldP||!newP||!conf)          { showMsg('❗ يرجى ملء جميع الحقول', false); return; }
-  if (USERS[CU.id].pass !== oldP)   { showMsg('❗ كلمة المرور الحالية غير صحيحة', false); return; }
-  if (newP.length < 6)              { showMsg('❗ كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل', false); return; }
-  if (newP !== conf)                 { showMsg('❗ كلمة المرور الجديدة وتأكيدها غير متطابقين', false); return; }
-  if (newP === oldP)                 { showMsg('❗ كلمة المرور الجديدة يجب أن تختلف عن الحالية', false); return; }
-  USERS[CU.id].pass = newP;
-  document.getElementById('cprof-old').value='';
-  document.getElementById('cprof-new').value='';
-  document.getElementById('cprof-confirm').value='';
-  showMsg('✅ تم تغيير كلمة المرور بنجاح وحُفظت بشكل دائم', true);
-  // Save permanently to Supabase
-  sbUpsert('settings', {key:`pass_${CU.id}`, value:JSON.stringify({pass:newP}), updated_at:new Date().toISOString()})
-    .catch(()=>{});
-  sbPost('activity_log', {msg:`تغيير كلمة مرور حساب ${CU.name}`, actor:CU.name});
-}
-
-
-
-function addNewAgency() {
-  const name  = document.getElementById('nag-name').value.trim();
-  const key   = document.getElementById('nag-key').value.trim().toLowerCase().replace(/\s+/g,'_');
-  const pass  = document.getElementById('nag-pass').value.trim();
-  const icon  = document.getElementById('nag-icon').value;
-  const color = document.getElementById('nag-color').value;
-  const msg   = document.getElementById('nag-msg');
-
-  const showMsg = (text, ok) => {
-    msg.style.display='block';
-    msg.style.background=ok?'var(--okb)':'var(--erb)';
-    msg.style.color=ok?'var(--ok)':'var(--er)';
-    msg.style.border=ok?'1px solid var(--okbrd)':'1px solid var(--erbrd)';
-    msg.textContent=text;
-  };
-
-  if (!name||!key||!pass) { showMsg('❗ يرجى ملء الاسم والمفتاح وكلمة المرور', false); return; }
-  if (!/^[a-z][a-z0-9_]*$/.test(key)) { showMsg('❗ المفتاح يجب أن يكون بالإنجليزية فقط (حروف وأرقام وشرطة سفلية)', false); return; }
-  if (USERS[key]) { showMsg('❗ هذا المفتاح مستخدم بالفعل، اختر مفتاحاً آخر', false); return; }
-  if (pass.length < 4) { showMsg('❗ كلمة المرور يجب أن تكون 4 أحرف على الأقل', false); return; }
-
-  // Add to extra agencies and USERS
-  const grad = `linear-gradient(135deg, ${color}dd, ${color})`;
-  EXTRA_AGENCIES[key] = {name, icon, color};
-  USERS[key] = {pass, name, role:'agency', agency:key, grad};
-
-  sbPost('activity_log', {msg:`إضافة جهة جديدة: ${name} (مفتاح: ${key})`, actor:'عمادة التطوير والجودة'});
-  // Save extra agencies permanently to Supabase
-  const agToSave = {};
-  Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
-    agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
-  });
-  sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
-    .catch(()=>{});
-
-  showMsg(`✅ تمت إضافة "${name}" بشكل دائم — المفتاح: ${key} — كلمة المرور: ${pass}`, true);
-  document.getElementById('nag-name').value='';
-  document.getElementById('nag-key').value='';
-  document.getElementById('nag-pass').value='';
-
-  // Refresh selects in send form if visible
-  const csA = document.getElementById('cs-a');
-  if(csA) {
-    const allAg = getAllAgencies();
-    csA.innerHTML='<option value="">— اختر —</option>'+Object.entries(USERS).filter(([k])=>k!=='committee'&&k!=='admin').map(([k,u])=>`<option value="${u.agency||k}">${allAg[u.agency||k]?.icon||'🏢'} ${u.name}</option>`).join('');
-  }
-}
-
-function removeAgency(key) {
-  const u = USERS[key];
-  if(!u) return;
-  if(!confirm(`حذف جهة "${u.name}"؟ سيتم حذف جميع إجراءاتها أيضاً.`)) return;
-  const agKey = u.agency || key;
-  delete EXTRA_AGENCIES[agKey];
-  delete USERS[key];
-  // Remove their items from DB
-  const toDelete = ALL_ITEMS.filter(i=>i.agency===agKey);
-  Promise.all(toDelete.map(it=>sbDelete('procedures',it.id))).then(async ()=>{
-    // Update saved extra agencies
-    const agToSave = {};
-    Object.entries(EXTRA_AGENCIES).forEach(([k,ag]) => {
-      agToSave[k] = {...ag, pass: USERS[k]?.pass||''};
-    });
-    await sbUpsert('settings', {key:'extra_agencies', value:JSON.stringify(agToSave), updated_at:new Date().toISOString()})
-      .catch(()=>{});
-    return loadAll();
-  }).then(()=>{
-    render_c_agencies();
-    toast(`تم حذف جهة "${u.name}"`);
-  });
-}
-
-// ─── مسح جميع الإجراءات ───
-function render_c_clear() {
-  const total = ALL_ITEMS.length;
-  const byStatus = {
-    pending:  ALL_ITEMS.filter(i=>i.status==='pending').length,
-    uploaded: ALL_ITEMS.filter(i=>i.status==='uploaded').length,
-    approved: ALL_ITEMS.filter(i=>i.status==='approved').length,
-    rejected: ALL_ITEMS.filter(i=>i.status==='rejected').length,
-  };
-
-  document.getElementById('c-clear').innerHTML = `
-    <div class="ph"><div class="pht"><h1>مسح جميع الإجراءات</h1><p>حذف نهائي لا يمكن التراجع عنه</p></div></div>
-
-    <div class="card">
-      <div class="ctit">${ico.list}الإجراءات الحالية في قاعدة البيانات</div>
-      <div class="sr" style="grid-template-columns:repeat(4,1fr);margin-bottom:0">
-        <div class="sc" style="border-top:3px solid #374151"><div class="num">${total}</div><div class="lbl">إجمالي الإجراءات</div></div>
-        <div class="sc" style="border-top:3px solid var(--wa)"><div class="num">${byStatus.pending}</div><div class="lbl">انتظار الجهة</div></div>
-        <div class="sc" style="border-top:3px solid #7c3aed"><div class="num">${byStatus.uploaded}</div><div class="lbl">جاهز للاعتماد</div></div>
-        <div class="sc" style="border-top:3px solid var(--ok)"><div class="num">${byStatus.approved}</div><div class="lbl">معتمد</div></div>
-      </div>
-    </div>
-
-    ${total === 0 ? '<div class="card"><div class="empty">✓ لا توجد إجراءات في قاعدة البيانات</div></div>' : `
-    <div style="border:2px solid var(--erbrd);border-radius:var(--r);padding:20px;background:var(--erb)">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span style="font-size:14px;font-weight:700;color:var(--er)">تحذير: هذه العملية لا يمكن التراجع عنها</span>
-      </div>
-      <p style="font-size:13px;color:#7f1d1d;margin-bottom:16px;line-height:1.7">سيتم حذف جميع الإجراءات من قاعدة البيانات نهائياً. لتأكيد العملية اكتب كلمة <strong>مسح</strong> في الحقل أدناه:</p>
-      <div class="fg"><input class="fc" id="clear-confirm" placeholder='اكتب كلمة "مسح" للتأكيد' style="border-color:var(--erbrd)"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-er" onclick="doClearAll()">🗑 مسح جميع الإجراءات نهائياً</button>
-        <button class="btn btn-g" onclick="doClearByStatus('approved')">حذف المعتمدة فقط (${byStatus.approved})</button>
-        <button class="btn btn-g" onclick="doClearByStatus('rejected')">حذف المرجوعة فقط (${byStatus.rejected})</button>
-      </div>
-    </div>`}`;
-}
-window.render_c_clear = render_c_clear;
-
-async function doClearAll() {
-  const confirm_val = document.getElementById('clear-confirm')?.value.trim();
-  if(confirm_val !== 'مسح') { toast('❗ اكتب كلمة "مسح" للتأكيد'); return; }
-  if(!confirm(`حذف جميع الإجراءات (${ALL_ITEMS.length}) نهائياً من Supabase؟`)) return;
-  loading(true, 'جاري مسح جميع الإجراءات...');
-  try {
-    await Promise.all(ALL_ITEMS.map(it => sbDelete('procedures', it.id)));
-    await sbPost('activity_log', {msg:`مسح جميع الإجراءات (${ALL_ITEMS.length} إجراء)`, actor:'عمادة التطوير والجودة'});
-    await loadAll(); loading(false);
-    render_c_clear(); render_c_home();
-    toast('✅ تم مسح جميع الإجراءات', true);
-  } catch(e) { loading(false); toast('❗ فشل المسح: '+e.message); }
-}
-
-async function doClearByStatus(status) {
-  const items = ALL_ITEMS.filter(i=>i.status===status);
-  const labels = {approved:'المعتمدة', rejected:'المرجوعة', pending:'قيد الانتظار', uploaded:'جاهز للاعتماد'};
-  if(!items.length) { toast('لا توجد إجراءات بهذه الحالة'); return; }
-  if(!confirm(`حذف ${items.length} إجراء من ${labels[status]}؟`)) return;
-  loading(true, 'جاري الحذف...');
-  try {
-    await Promise.all(items.map(it => sbDelete('procedures', it.id)));
-    await sbPost('activity_log', {msg:`حذف ${items.length} إجراء (${labels[status]})`, actor:'عمادة التطوير والجودة'});
-    await loadAll(); loading(false);
-    render_c_clear(); render_c_home();
-    toast(`✅ تم حذف ${items.length} إجراء من ${labels[status]}`, true);
-  } catch(e) { loading(false); toast('❗ فشل الحذف: '+e.message); }
-}
-
-// ═══════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════
-window.addEventListener('load', () => {
-  // الصفحة جاهزة — يتم الاتصال بقاعدة البيانات عند تسجيل الدخول
-});
-</script>
-</body>
-</html>
