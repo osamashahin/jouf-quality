@@ -742,50 +742,171 @@ async function cSend() {
 }
 
 function render_c_home() {
-  const t=ALL_ITEMS.length;
-  let pendingReqs=0, underReview=0, returned=0, completed=0;
+  // ── احتساب الإحصائيات ──
+  let totalReqs=0, pendingR=0, underR=0, returnedR=0, completedR=0;
   ALL_ITEMS.forEach(it => getReqStatus(it).forEach(r => {
-    if(r.status==='pending') pendingReqs++;
-    else if(r.status==='under_review') underReview++;
-    else if(r.status==='returned') returned++;
-    else if(r.status==='completed') completed++;
+    totalReqs++;
+    if(r.status==='pending')       pendingR++;
+    else if(r.status==='under_review') underR++;
+    else if(r.status==='returned')     returnedR++;
+    else if(r.status==='completed')    completedR++;
   }));
+
+  // إحصائيات كل معيار
+  const critStats = INST_CRITERIA.map(m => {
+    let total=0, done=0;
+    ALL_ITEMS.filter(it => String(it.crit_idx+1) === String(m.num) ||
+      (it.inst_crit_num && it.inst_crit_num.split('.')[0] === String(m.num))
+    ).forEach(it => getReqStatus(it).forEach(r => {
+      total++;
+      if(r.status==='completed') done++;
+    }));
+    return {title: m.title, num: m.num, total, done, pct: total? Math.round(done/total*100):0};
+  });
+
+  // إحصائيات الجهات
+  const allAgs = {...AGS, ...EXTRA_AGENCIES};
+  const agStats = Object.entries(allAgs).map(([k,ag]) => {
+    let p=0,u=0,r=0,c=0, total=0;
+    ALL_ITEMS.filter(i=>i.agency===k).forEach(it => getReqStatus(it).forEach(x => {
+      total++;
+      if(x.status==='pending') p++;
+      else if(x.status==='under_review') u++;
+      else if(x.status==='returned') r++;
+      else if(x.status==='completed') c++;
+    }));
+    const pct = total ? Math.round(c/total*100) : 0;
+    return {k, name:ag.name, icon:ag.icon||'🏢', color:ag.color||'#6b3fa0', p,u,r,c,total,pct};
+  }).filter(a=>a.total>0 || ALL_ITEMS.some(i=>i.agency===a.k));
+
+  // رسم Donut Chart بـ SVG
+  function donut(data, size=140) {
+    const r=52, cx=70, cy=70, stroke=18;
+    const total = data.reduce((s,d)=>s+d.v,0);
+    if(!total) return `<svg width="${size}" height="${size}" viewBox="0 0 140 140"><circle cx="70" cy="70" r="52" fill="none" stroke="#e5e7eb" stroke-width="18"/><text x="70" y="76" text-anchor="middle" font-size="14" fill="#9ca3af" font-family="Cairo">لا بيانات</text></svg>`;
+    let angle = -90;
+    const slices = [];
+    data.forEach(d => {
+      if(!d.v) return;
+      const pct = d.v/total;
+      const startAngle = angle * Math.PI/180;
+      const endAngle = (angle + pct*360) * Math.PI/180;
+      const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
+      const x2=cx+r*Math.cos(endAngle),   y2=cy+r*Math.sin(endAngle);
+      const large = pct>0.5?1:0;
+      slices.push(`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${d.c}" opacity="0.9"/>`);
+      angle += pct*360;
+    });
+    // دائرة بيضاء مركزية لشكل Donut
+    slices.push(`<circle cx="${cx}" cy="${cy}" r="${r-stroke}" fill="white"/>`);
+    const mainLabel = data.reduce((p,c)=>c.v>p.v?c:p, data[0]);
+    slices.push(`<text x="${cx}" y="${cy-6}" text-anchor="middle" font-size="18" font-weight="bold" fill="#1f2937" font-family="Cairo">${mainLabel.v}</text>`);
+    slices.push(`<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="10" fill="#6b7280" font-family="Cairo">${mainLabel.l}</text>`);
+    return `<svg width="${size}" height="${size}" viewBox="0 0 140 140">${slices.join('')}</svg>`;
+  }
+
+  const reqDonutData = [
+    {v:completedR, c:'#16a34a', l:'مكتمل'},
+    {v:underR,     c:'#2563eb', l:'مراجعة'},
+    {v:returnedR,  c:'#dc2626', l:'معاد'},
+    {v:pendingR,   c:'#e5e7eb', l:'لم يُرفع'},
+  ];
+
   updateBadges();
   document.getElementById('c-home').innerHTML = `
-    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>عمادة التطوير والجودة — Supabase ☁</p></div></div>
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>عمادة التطوير والجودة — Supabase ☁</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_home();toast('تم التحديث')})">🔄</button></div>
+
+    <!-- إحصائيات سريعة -->
     <div class="sr">
-      <div class="sc" style="border-top:3px solid #6b3fa0"><div class="ico">📤</div><div class="num">${t}</div><div class="lbl">إجمالي الإجراءات المُرسلة</div></div>
-      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingReqs}</div><div class="lbl">متطلبات لم تُرفع</div></div>
-      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">متطلبات تحت المراجعة</div></div>
-      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">متطلبات مكتملة</div></div>
+      <div class="sc" style="border-top:3px solid #6b3fa0"><div class="ico">📤</div><div class="num">${ALL_ITEMS.length}</div><div class="lbl">إجراءات مُرسلة</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completedR}</div><div class="lbl">متطلبات مكتملة</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingR}</div><div class="lbl">لم تُرفع بعد</div></div>
     </div>
-    <div class="g2">
-      <div class="card"><div class="ctit">${ico.bar}تقدم المعايير</div>
-        ${CRITERIA.map((c,i) => {
-          const cnt=ALL_ITEMS.filter(x=>x.crit_idx===i).length;
-          const pct=Math.round(cnt/c.items.length*100);
-          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${c.title}</span><span style="color:var(--mu)">${cnt}/${c.items.length}</span></div><div class="prog"><div class="pf" style="width:${pct}%"></div></div></div>`;
-        }).join('')}
+
+    <!-- Donut Chart + أفضلية المتطلبات -->
+    <div class="g2" style="margin-bottom:14px">
+      <div class="card">
+        <div class="ctit">📊 توزيع المتطلبات الكلي</div>
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+          <div>${donut(reqDonutData)}</div>
+          <div style="flex:1;min-width:120px">
+            ${reqDonutData.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;font-size:12px">
+              <div style="width:10px;height:10px;border-radius:50%;background:${d.c};flex-shrink:0"></div>
+              <span style="flex:1">${d.l}</span>
+              <strong>${d.v}</strong>
+              <span style="color:var(--mu);font-size:10px">${totalReqs?Math.round(d.v/totalReqs*100):0}%</span>
+            </div>`).join('')}
+            <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">الإجمالي: ${totalReqs} متطلب</div>
+          </div>
+        </div>
       </div>
-      <div>
-        <div class="card" style="margin-bottom:14px"><div class="ctit">${ico.ppl}توزيع على الجهات (حسب المتطلبات)</div>
-          ${Object.entries(AGS).map(([k,ag]) => {
-            const agItems = ALL_ITEMS.filter(i=>i.agency===k);
-            let p=0,u=0,r=0,c=0;
-            agItems.forEach(it => getReqStatus(it).forEach(x => {
-              if(x.status==='pending') p++;
-              else if(x.status==='under_review') u++;
-              else if(x.status==='returned') r++;
-              else if(x.status==='completed') c++;
+
+      <!-- تقدم المعايير -->
+      <div class="card">
+        <div class="ctit">📋 تقدم المعايير</div>
+        ${critStats.filter(c=>c.total>0||true).map(c=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+              <span>معيار ${c.num}: ${c.title}</span>
+              <span style="color:var(--mu)">${c.done}/${c.total} (${c.pct}%)</span>
+            </div>
+            <div class="prog"><div class="pf" style="width:${c.pct}%;background:${c.pct===100?'#16a34a':c.pct>50?'#2563eb':'#6b3fa0'}"></div></div>
+          </div>`).join('')}
+        <div style="font-size:12px;font-weight:700;color:var(--ok);margin-top:8px">
+          معايير مكتملة: ${critStats.filter(c=>c.pct===100&&c.total>0).length} / ${critStats.length}
+        </div>
+      </div>
+    </div>
+
+    <!-- إحصائيات الجهات -->
+    <div class="card">
+      <div class="ctit">${ico.ppl}تقدم الجهات</div>
+      <div style="overflow-x:auto"><table class="tbl">
+        <thead><tr>
+          <th>الجهة</th>
+          <th>الإجمالي</th>
+          <th>لم يُرفع</th>
+          <th>تحت المراجعة</th>
+          <th>معاد</th>
+          <th>مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+          ${Object.entries({...AGS,...EXTRA_AGENCIES}).map(([k,ag])=>{
+            const items=ALL_ITEMS.filter(i=>i.agency===k);
+            let p=0,u=0,rv=0,c=0;
+            items.forEach(it=>getReqStatus(it).forEach(x=>{
+              if(x.status==='pending')p++;
+              else if(x.status==='under_review')u++;
+              else if(x.status==='returned')rv++;
+              else if(x.status==='completed')c++;
             }));
-            const tot=p+u+r+c;
-            return `<div style="padding:8px 0;border-bottom:1px solid var(--bd);font-size:12px;display:flex;align-items:center;gap:6px">${ag.icon}<span style="flex:1;font-weight:600">${ag.name}</span><span class="bdg bs">${tot}</span><span class="bdg bp">${p}</span><span class="bdg bu">${u}</span><span class="bdg br">${r}</span><span class="bdg ba">${c}</span></div>`;
+            const tot=p+u+rv+c;
+            const pct=tot?Math.round(c/tot*100):0;
+            return `<tr>
+              <td style="font-weight:600">${ag.icon||'🏢'} ${ag.name}</td>
+              <td>${tot}</td>
+              <td>${p?`<span class="bdg bs">${p}</span>`:'-'}</td>
+              <td>${u?`<span class="bdg bu">${u}</span>`:'-'}</td>
+              <td>${rv?`<span class="bdg br">${rv}</span>`:'-'}</td>
+              <td>${c?`<span class="bdg ba">${c}</span>`:'-'}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+                  <span style="font-size:11px;font-weight:700;min-width:30px">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
           }).join('')}
-        </div>
-        <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
-          ${ALL_LOGS.slice(0,8).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg}</div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
-        </div>
-      </div>
+        </tbody>
+      </table></div>
+    </div>
+
+    <!-- آخر النشاطات -->
+    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
+      ${ALL_LOGS.slice(0,8).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
     </div>`;
 }
 window.render_c_home = render_c_home;
@@ -1207,48 +1328,106 @@ function render_c_track() {
   ALL_ITEMS.forEach(it => {
     const reqs = getReqList(it);
     const rs   = getReqStatus(it);
+    const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
     reqs.forEach((reqText, idx) => {
       const r = rs[idx] || {status:'pending'};
-      rows.push({it, idx, reqText, r});
+      rows.push({it, idx, reqText, r, critLabel});
     });
   });
 
   document.getElementById('c-track').innerHTML = `
-    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>التاريخ الكامل لكل متطلب</p></div>
+    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>التاريخ الكامل لكل متطلب مع إمكانية تحميل جميع الملفات</p></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_track();toast('تم التحديث')})">🔄</button></div>
     ${buildFilterBar('cf-track','render_c_track_filtered()')}
-    <div class="card"><div class="tw"><table class="tbl">
-      <thead><tr>
-        <th>المعيار</th><th>المعيار الفرعي</th><th>المحك</th>
-        <th>المتطلب</th><th>الجهة</th><th>تاريخ الإرسال</th>
-        <th>تاريخ الرفع</th><th>ملاحظة الجهة</th><th>ملاحظة العمادة</th><th>الحالة</th>
-      </tr></thead>
-      <tbody id="cf-track-body">
-      ${rows.length ? rows.map(({it, idx, reqText, r}) => {
-        let badge = '';
-        if      (r.status==='pending')      badge = '<span class="bdg bs">⬜ لم يُرفع</span>';
-        else if (r.status==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد</span>';
-        else if (r.status==='completed')    badge = '<span class="bdg ba">✅ مكتمل</span>';
-        const reviewerTag = r.reviewed_by ? `<span style="font-size:10px;color:#065f46;display:block">👤 ${r.reviewed_by}</span>` : '';
-        return `<tr>
-          <td style="font-size:11px">${it.crit_title||'—'}</td>
-          <td style="font-size:11px">${it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : '—'}</td>
-          <td style="font-size:11px;font-weight:600">${it.proc||'—'}</td>
-          <td style="font-size:12px">${reqText}</td>
-          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
-          <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
-          <td style="font-size:10px;color:var(--mu)">${r.uploaded_at ? fmtDate(r.uploaded_at) : '—'}</td>
-          <td style="font-size:11px;color:#15803d">${r.agency_note||'—'}</td>
-          <td style="font-size:11px;color:#b91c1c">${r.committee_note||'—'}</td>
-          <td>${badge}${reviewerTag}</td>
-        </tr>`;
-      }).join('') : '<tr><td colspan="10" class="empty">لا توجد إجراءات بعد</td></tr>'}
-      </tbody>
-    </table></div></div>`;
+    <div id="cf-track-body">
+    ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => {
+      let badge='';
+      if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+      else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+      else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+      else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
+      const reviewerTag = r.reviewed_by ? `<span style="font-size:10px;color:#065f46">👤 ${r.reviewed_by}</span>` : '';
+
+      // جمع جميع الملفات المرفوعة (الحالي + تاريخي)
+      const allFiles = (r.file_history || []);
+      if (r.file) {
+        // الملف الحالي
+        allFiles;
+      }
+      const filesList = [];
+      if (r.file_history && r.file_history.length) {
+        r.file_history.forEach((fh, fi) => {
+          filesList.push({file: fh.file, url: fh.file_url, date: fh.uploaded_at, label: `ملف ${fi+1} (سابق)`});
+        });
+      }
+      if (r.file) filesList.push({file: r.file, url: r.file_url, date: r.uploaded_at, label: r.status==='completed'?'الملف المعتمد':'الملف الحالي'});
+
+      return `<div class="ic" style="margin-bottom:8px;border-right:4px solid ${r.status==='completed'?'var(--ok)':r.status==='returned'?'var(--er)':r.status==='under_review'?'#2563eb':'var(--bd)'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <div style="font-size:12px;color:var(--mu)">${it.crit_title||''}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--pd)">${critLabel}</div>
+            <div style="font-size:13px;font-weight:700;margin:2px 0">${reqText}</div>
+            <div style="font-size:11px;color:var(--mu)">${AGS[it.agency]?.icon||''} ${it.agency_name} · أُرسل: ${it.sent_at||'—'}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${badge}${reviewerTag}</div>
+        </div>
+        ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
+        ${r.committee_note?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
+        ${filesList.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+          ${filesList.map(f=>`<a href="${f.url||'#'}" target="_blank" class="btn btn-g btn-sm" style="font-size:11px;${!f.url?'opacity:0.5;pointer-events:none':''}">
+            ⬇ ${f.label}: ${f.file} <span style="color:var(--mu);font-size:10px">${fmtDate(f.date)}</span>
+          </a>`).join('')}
+        </div>`:''}
+      </div>`;
+    }).join('') : '<div class="card"><div class="empty">لا توجد إجراءات بعد</div></div>'}
+    </div>`;
   setTimeout(()=>showFilterCount('cf-track', rows.length, rows.length), 0);
 }
 window.render_c_track = render_c_track;
+
+function render_c_track_filtered() {
+  const allRows = [];
+  ALL_ITEMS.forEach(it => {
+    const reqs=getReqList(it), rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    reqs.forEach((reqText,idx)=>{ const r=rs[idx]||{status:'pending'};
+      allRows.push({it,idx,reqText,r,critLabel}); });
+  });
+  const filtered = applyFilters(allRows, 'cf-track');
+  const body = document.getElementById('cf-track-body');
+  if (!body) return;
+
+  if (!filtered.length) { body.innerHTML='<div class="card"><div class="empty">لا توجد نتائج مطابقة</div></div>'; showFilterCount('cf-track',0,allRows.length); return; }
+
+  body.innerHTML = filtered.map(({it, idx, reqText, r, critLabel}) => {
+    let badge='';
+    if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+    else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
+    const reviewerTag = r.reviewed_by?`<span style="font-size:10px;color:#065f46">👤 ${r.reviewed_by}</span>`:'';
+    const filesList = [];
+    if (r.file_history && r.file_history.length) r.file_history.forEach((fh,fi)=>filesList.push({file:fh.file,url:fh.file_url,date:fh.uploaded_at,label:`ملف ${fi+1} (سابق)`}));
+    if (r.file) filesList.push({file:r.file,url:r.file_url,date:r.uploaded_at,label:r.status==='completed'?'الملف المعتمد':'الملف الحالي'});
+    return `<div class="ic" style="margin-bottom:8px;border-right:4px solid ${r.status==='completed'?'var(--ok)':r.status==='returned'?'var(--er)':r.status==='under_review'?'#2563eb':'var(--bd)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-size:12px;color:var(--mu)">${it.crit_title||''}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--pd)">${critLabel}</div>
+          <div style="font-size:13px;font-weight:700;margin:2px 0">${reqText}</div>
+          <div style="font-size:11px;color:var(--mu)">${AGS[it.agency]?.icon||''} ${it.agency_name} · أُرسل: ${it.sent_at||'—'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${badge}${reviewerTag}</div>
+      </div>
+      ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
+      ${r.committee_note?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
+      ${filesList.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${filesList.map(f=>`<a href="${f.url||'#'}" target="_blank" class="btn btn-g btn-sm" style="font-size:11px;${!f.url?'opacity:0.5;pointer-events:none':''}">⬇ ${f.label}: ${f.file} <span style="color:var(--mu);font-size:10px">${fmtDate(f.date)}</span></a>`).join('')}</div>`:''}
+    </div>`;
+  }).join('');
+  showFilterCount('cf-track', filtered.length, allRows.length);
+}
+;
 
 function render_c_track_filtered() {
   const allRows = [];
@@ -1322,9 +1501,76 @@ function cExp() {
 }
 
 function render_c_log() {
+  const actors = [...new Set(ALL_LOGS.map(l=>l.actor).filter(Boolean))];
   document.getElementById('c-log').innerHTML=`
-    <div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>محفوظ في Supabase ☁</p></div></div>
-    <div class="card">${ALL_LOGS.length ? ALL_LOGS.map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') : '<div class="empty">لا يوجد نشاط</div>'}</div>`;
+    <div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>محفوظ في Supabase ☁ — ${ALL_LOGS.length} نشاط</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_log();toast('تم التحديث')})">🔄</button></div>
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div style="flex:1;min-width:160px"><label class="fl">🔍 بحث</label>
+          <input class="fc" id="log-q" placeholder="ابحث في النشاطات..." oninput="filterLog()"></div>
+        <div style="min-width:150px"><label class="fl">الجهة / المستخدم</label>
+          <select class="fc" id="log-actor" onchange="filterLog()">
+            <option value="">الكل</option>
+            ${actors.map(a=>`<option value="${a}">${a}</option>`).join('')}
+          </select></div>
+        <div style="min-width:120px"><label class="fl">من تاريخ</label>
+          <input class="fc" type="date" id="log-from" onchange="filterLog()"></div>
+        <div style="min-width:120px"><label class="fl">إلى تاريخ</label>
+          <input class="fc" type="date" id="log-to" onchange="filterLog()"></div>
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('log-q').value='';document.getElementById('log-actor').value='';document.getElementById('log-from').value='';document.getElementById('log-to').value='';filterLog()">✕ مسح</button>
+      </div>
+      <div id="log-count" style="font-size:11px;color:var(--mu);margin-top:6px">${ALL_LOGS.length} نشاط</div>
+    </div>
+    <div class="card" id="log-body">
+      ${renderLogItems(ALL_LOGS)}
+    </div>`;
+}
+
+function renderLogItems(logs) {
+  if (!logs.length) return '<div class="empty">لا توجد نتائج</div>';
+  // تجميع النشاطات حسب اليوم
+  const byDay = {};
+  logs.forEach(l => {
+    const day = l.created_at ? l.created_at.split('T')[0] : 'unknown';
+    if (!byDay[day]) byDay[day] = [];
+    byDay[day].push(l);
+  });
+  return Object.entries(byDay).map(([day, items]) => `
+    <div style="font-size:11px;font-weight:700;color:var(--mu);padding:8px 0 4px;border-bottom:2px solid var(--bd);margin-bottom:6px">${fmtDate(day+'T00:00:00')}</div>
+    ${items.map(l => {
+      const isReviewer = l.actor && !['عمادة التطوير والجودة','مدير النظام'].includes(l.actor) && !Object.values(AGS).map(a=>a.name).includes(l.actor);
+      const isAgency = Object.values(AGS).map(a=>a.name).includes(l.actor) || Object.values(EXTRA_AGENCIES||{}).map(a=>a.name).includes(l.actor);
+      const dotColor = isReviewer?'#065f46':isAgency?'#2563eb':'#6b3fa0';
+      return `<div class="ar" style="margin-bottom:6px">
+        <div class="ad" style="background:${dotColor}"></div>
+        <div style="flex:1">
+          <span style="font-size:12px">${l.msg}</span>
+          <span style="color:var(--mu);font-size:10.5px;margin-right:6px">[${l.actor}]</span>
+        </div>
+        <span class="at">${fmtDate(l.created_at)}</span>
+      </div>`;
+    }).join('')}
+  `).join('');
+}
+
+function filterLog() {
+  const q      = (document.getElementById('log-q')?.value||'').trim().toLowerCase();
+  const actor  = document.getElementById('log-actor')?.value||'';
+  const from   = document.getElementById('log-from')?.value||'';
+  const to     = document.getElementById('log-to')?.value||'';
+  const filtered = ALL_LOGS.filter(l => {
+    if (q && !l.msg?.toLowerCase().includes(q) && !l.actor?.toLowerCase().includes(q)) return false;
+    if (actor && l.actor !== actor) return false;
+    const day = l.created_at ? l.created_at.split('T')[0] : '';
+    if (from && day < from) return false;
+    if (to   && day > to)   return false;
+    return true;
+  });
+  const body = document.getElementById('log-body');
+  const cnt  = document.getElementById('log-count');
+  if (body) body.innerHTML = renderLogItems(filtered);
+  if (cnt)  cnt.textContent = `${filtered.length} من ${ALL_LOGS.length} نشاط`;
 }
 window.render_c_log = render_c_log;
 
@@ -1604,13 +1850,23 @@ async function agUploadReq(itemId, idx) {
     const fileUrl = await sbUploadFile(path, file);
 
     const rs = getReqStatus(it);
+    // احتفظ بتاريخ الملفات السابقة
+    const prevFile = rs[idx]?.file ? {
+      file: rs[idx].file,
+      file_url: rs[idx].file_url||'',
+      uploaded_at: rs[idx].uploaded_at||''
+    } : null;
+    const fileHistory = rs[idx]?.file_history || [];
+    if (prevFile) fileHistory.push(prevFile);
+
     rs[idx] = {
       file: file.name,
       file_url: fileUrl,
       uploaded_at: new Date().toISOString(),
       agency_note: noteEl ? noteEl.value.trim() : '',
       committee_note: '',
-      status: 'under_review'
+      status: 'under_review',
+      file_history: fileHistory
     };
 
     await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
@@ -2486,6 +2742,10 @@ function rvBuildSend() {
           <option value="main">🏫 وكالة الجامعة</option>
           <option value="postgrad">🎓 وكالة الجامعة للدراسات العليا والبحث العلمي</option>
         </select></div>
+      <div class="fg"><label class="fl">نموذج استرشادي (اختياري)</label>
+        <div class="uz" id="rv-guide-uz" onclick="document.getElementById('rv-guide-f').click()">📎 أرفق نموذجاً استرشادياً للجهة</div>
+        <input type="file" id="rv-guide-f" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onchange="rvGuideFile(this)">
+      </div>
       <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
         <textarea class="fc" id="rv-note" placeholder="اكتب المتطلبات..."></textarea></div>
       <div style="display:flex;gap:8px">
@@ -2493,6 +2753,13 @@ function rvBuildSend() {
         <button class="btn btn-g" onclick="rvClear()">مسح</button>
       </div>
     </div>`;
+}
+
+function rvGuideFile(inp) {
+  if (inp.files[0]) {
+    const z = document.getElementById('rv-guide-uz');
+    z.innerHTML = '✅ ' + inp.files[0].name; z.classList.add('done');
+  }
 }
 
 function rvFillSubs() {
@@ -2556,6 +2823,17 @@ async function rvSend() {
   };
   try {
     loading(true,'جاري الإرسال...');
+    // رفع النموذج الاسترشادي إن وُجد
+    const guideInp = document.getElementById('rv-guide-f');
+    if (guideInp && guideInp.files[0]) {
+      try {
+        const gf = guideInp.files[0];
+        const gext = gf.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'');
+        const gpath = `guides/${CU.id}/${item.id}_guide_${Date.now()}.${gext}`;
+        item.committee_file = gf.name;
+        item.committee_file_url = await sbUploadFile(gpath, gf);
+      } catch(e) {}
+    }
     await sbPost('procedures', item);
     await sbPost('activity_log', {msg:`[مراجع] إرسال إجراء "${item.proc}" إلى ${item.agency_name}`, actor:CU.name});
     await loadAll(); loading(false);
