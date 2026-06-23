@@ -2155,7 +2155,10 @@ function buildAdmin() {
 }
 
 // ── مدير النظام يعيد استخدام دوال العمادة مع تعديل معرّف الشاشة ──
-function admRenderCrit()   { render_c_crit();   document.getElementById('adm-crit').innerHTML      = document.getElementById('c-crit')?.innerHTML||'جاري التحميل...'; }
+function admRenderCrit() {
+  // render_c_crit تكتب مباشرة في adm-crit إذا كان موجوداً
+  render_c_crit();
+}
 function admBuildSend() {
   document.getElementById('adm-send').innerHTML = `
     <div class="ph"><div class="pht"><h1>إرسال إجراء</h1></div></div>
