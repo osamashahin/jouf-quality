@@ -533,18 +533,13 @@ function buildCommittee() {
   document.getElementById('sidebar').innerHTML = `
     <div class="sbg">الرئيسية</div>
     <div class="sbi active" onclick="sbAct(this);showScreen('c-home');render_c_home()">${ico.grid}نظرة عامة</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-crit');render_c_crit()">${ico.check}إدارة المعايير والإجراءات</div>
     <div class="sbg">الإجراءات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-send');cBuildInstSelect()">${ico.send}إرسال إجراء</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-appr');render_c_appr()">${ico.doc}اعتماد الإجراءات<span class="sbdg" id="bdg-a" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-track');render_c_track()">${ico.clock}متابعة الإجراءات</div>
     <div class="sbg">السجلات</div>
     <div class="sbi" onclick="sbAct(this);showScreen('c-log');render_c_log()">${ico.pen}سجل النشاط</div>
-    <div class="sbg">الإعدادات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-agencies');render_c_agencies()">${ico.ppl}إدارة الجهات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-reviewers');render_c_reviewers()">${ico.ppl}إدارة المراجعين</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-profile');render_c_profile()">${ico.pen}بياناتي وكلمة المرور</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('c-clear');render_c_clear()" style="color:#dc2626">${ico.trash}مسح جميع الإجراءات</div>`;
+    <div class="sbg">الحساب</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('c-profile');render_c_profile()">${ico.pen}بياناتي وكلمة المرور</div>`;
 
   document.getElementById('mc').innerHTML = `
     <div class="screen active" id="c-home"></div>
@@ -904,10 +899,7 @@ function render_c_home() {
       </table></div>
     </div>
 
-    <!-- آخر النشاطات -->
-    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
-      ${ALL_LOGS.slice(0,8).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
-    </div>`;
+`;
 }
 window.render_c_home = render_c_home;
 
@@ -1611,7 +1603,10 @@ function render_c_log() {
   const actors = [...new Set(ALL_LOGS.map(l=>l.actor).filter(Boolean))];
   document.getElementById('c-log').innerHTML=`
     <div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>محفوظ في Supabase ☁ — ${ALL_LOGS.length} نشاط</p></div>
-    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_log();toast('تم التحديث')})">🔄</button></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_log();toast('تم التحديث')})">🔄</button>
+      <button class="btn btn-er btn-sm" onclick="clearActivityLog()">🗑 مسح السجل</button>
+    </div></div>
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
         <div style="flex:1;min-width:160px"><label class="fl">🔍 بحث</label>
@@ -1632,6 +1627,18 @@ function render_c_log() {
     <div class="card" id="log-body">
       ${renderLogItems(ALL_LOGS)}
     </div>`;
+}
+
+async function clearActivityLog() {
+  if (!confirm('هل أنت متأكد من مسح سجل النشاط كاملاً؟ لا يمكن التراجع.')) return;
+  try {
+    loading(true, 'جاري المسح...');
+    await sbDeleteAll('activity_log');
+    await loadAll();
+    loading(false);
+    render_c_log();
+    toast('✅ تم مسح سجل النشاط', true);
+  } catch(e) { loading(false); toast('❗ فشل: ' + e.message); }
 }
 
 function renderLogItems(logs) {
@@ -1707,29 +1714,107 @@ function buildAgency() {
 function mine(f) { return ALL_ITEMS.filter(i=>i.agency===CU.agency&&(!f||f(i))); }
 
 function render_ag_home() {
-  const ag=AGS[CU.agency]; const items=mine(); updateBadges();
+  const ag = AGS[CU.agency] || EXTRA_AGENCIES[CU.agency] || {};
+  const items = mine(); updateBadges();
 
-  let totalReqs=0, pendingReqs=0, underReview=0, returned=0, completed=0;
-  items.forEach(it => {
-    getReqStatus(it).forEach(r => {
-      totalReqs++;
-      if(r.status==='pending') pendingReqs++;
-      else if(r.status==='under_review') underReview++;
-      else if(r.status==='returned') returned++;
-      else if(r.status==='completed') completed++;
+  let totalReqs=0, pendingR=0, underR=0, returnedR=0, completedR=0;
+  items.forEach(it => getReqStatus(it).forEach(r => {
+    totalReqs++;
+    if(r.status==='pending')       pendingR++;
+    else if(r.status==='under_review') underR++;
+    else if(r.status==='returned')     returnedR++;
+    else if(r.status==='completed')    completedR++;
+  }));
+
+  // إحصائيات كل معيار (مرتبطة بهذه الجهة فقط)
+  const critStats = INST_CRITERIA.map(m => {
+    let total=0, done=0;
+    items.filter(it => String(it.crit_idx+1)===String(m.num) ||
+      (it.inst_crit_num && it.inst_crit_num.split('.')[0]===String(m.num))
+    ).forEach(it => getReqStatus(it).forEach(r => {
+      total++;
+      if(r.status==='completed') done++;
+    }));
+    return {title:m.title, num:m.num, total, done, pct:total?Math.round(done/total*100):0};
+  }).filter(c => c.total > 0);
+
+  // Donut Chart SVG
+  function donut(data, size=130) {
+    const r=50, cx=65, cy=65, stroke=18;
+    const total = data.reduce((s,d)=>s+d.v,0);
+    if(!total) return `<svg width="${size}" height="${size}" viewBox="0 0 130 130"><circle cx="65" cy="65" r="50" fill="none" stroke="#e5e7eb" stroke-width="18"/><text x="65" y="71" text-anchor="middle" font-size="13" fill="#9ca3af" font-family="Cairo">لا بيانات</text></svg>`;
+    let angle = -90;
+    const slices = [];
+    data.forEach(d => {
+      if(!d.v) return;
+      const pct = d.v/total;
+      const sa = angle*Math.PI/180, ea = (angle+pct*360)*Math.PI/180;
+      const x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa);
+      const x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);
+      slices.push(`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${pct>0.5?1:0},1 ${x2},${y2} Z" fill="${d.c}" opacity="0.9"/>`);
+      angle += pct*360;
     });
-  });
+    slices.push(`<circle cx="${cx}" cy="${cy}" r="${r-stroke}" fill="white"/>`);
+    const mainLabel = data.reduce((p,c)=>c.v>p.v?c:p, data[0]);
+    slices.push(`<text x="${cx}" y="${cy-5}" text-anchor="middle" font-size="17" font-weight="bold" fill="#1f2937" font-family="Cairo">${mainLabel.v}</text>`);
+    slices.push(`<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="10" fill="#6b7280" font-family="Cairo">${mainLabel.l}</text>`);
+    return `<svg width="${size}" height="${size}" viewBox="0 0 130 130">${slices.join('')}</svg>`;
+  }
 
-  document.getElementById('ag-home').innerHTML=`
-    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>${ag?.name} — Supabase ☁</p></div></div>
+  const reqData = [
+    {v:completedR, c:'#16a34a', l:'مكتمل'},
+    {v:underR,     c:'#2563eb', l:'مراجعة'},
+    {v:returnedR,  c:'#dc2626', l:'معاد'},
+    {v:pendingR,   c:'#e5e7eb', l:'لم يُرفع'},
+  ];
+
+  document.getElementById('ag-home').innerHTML = `
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>${ag.name||''} — Supabase ☁</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_home();updateBadges();toast('تم التحديث')})">🔄</button></div>
+
+    <!-- إحصائيات سريعة -->
     <div class="sr">
-      <div class="sc" style="border-top:3px solid #dc2626"><div class="ico">📬</div><div class="num">${pendingReqs+returned}</div><div class="lbl">متطلبات تتطلب رفع</div></div>
-      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
-      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
-      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">↩</div><div class="num">${returned}</div><div class="lbl">معاد للملاحظات</div></div>
+      <div class="sc" style="border-top:3px solid #dc2626"><div class="ico">📬</div><div class="num">${pendingR+returnedR}</div><div class="lbl">تتطلب رفع</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completedR}</div><div class="lbl">مكتمل</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">↩</div><div class="num">${returnedR}</div><div class="lbl">معاد للملاحظات</div></div>
     </div>
-    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
-      ${ALL_LOGS.slice(0,10).map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg} <span style="color:var(--mu);font-size:10px">[${l.actor}]</span></div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="empty">لا يوجد نشاط</div>'}
+
+    <div class="g2">
+      <!-- Donut + أسطورة -->
+      <div class="card">
+        <div class="ctit">📊 توزيع المتطلبات</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div>${donut(reqData)}</div>
+          <div style="flex:1;min-width:110px">
+            ${reqData.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px">
+              <div style="width:10px;height:10px;border-radius:50%;background:${d.c};flex-shrink:0"></div>
+              <span style="flex:1">${d.l}</span>
+              <strong>${d.v}</strong>
+              <span style="color:var(--mu);font-size:10px">${totalReqs?Math.round(d.v/totalReqs*100):0}%</span>
+            </div>`).join('')}
+            <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">
+              الإجمالي: ${totalReqs} متطلب
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- تقدم المعايير -->
+      <div class="card">
+        <div class="ctit">📋 تقدم المعايير</div>
+        ${critStats.length ? critStats.map(c=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+              <span>معيار ${c.num}: ${c.title}</span>
+              <span style="color:var(--mu)">${c.done}/${c.total} (${c.pct}%)</span>
+            </div>
+            <div class="prog"><div class="pf" style="width:${c.pct}%;background:${c.pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+          </div>`).join('') : '<div class="empty">لا توجد إجراءات بعد</div>'}
+        ${critStats.length?`<div style="font-size:12px;font-weight:700;color:var(--ok);margin-top:8px">
+          معايير مكتملة: ${critStats.filter(c=>c.pct===100).length} / ${critStats.length}
+        </div>`:''}
+      </div>
     </div>`;
 }
 window.render_ag_home = render_ag_home;
