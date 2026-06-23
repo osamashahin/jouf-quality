@@ -1329,6 +1329,14 @@ function render_c_track() {
   document.getElementById('c-track').innerHTML = `
     <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>تتبع كامل لكل إجراء ومتطلباته</p></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_track();toast('تم التحديث')})">🔄</button></div>
+
+    <!-- تبويبات المتابعة -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button id="tab-procedures" class="btn btn-p btn-sm" onclick="showTrackTab('procedures')" style="font-size:13px;padding:9px 18px">📋 متابعة الإجراءات</button>
+      <button id="tab-agencies"   class="btn btn-g btn-sm" onclick="showTrackTab('agencies')"   style="font-size:13px;padding:9px 18px">🏢 متابعة الجهات</button>
+      <button id="tab-reviewers"  class="btn btn-g btn-sm" onclick="showTrackTab('reviewers')"  style="font-size:13px;padding:9px 18px">👤 متابعة المراجعين</button>
+    </div>
+    <div id="track-tab-content">
     ${buildFilterBar('cf-track','render_c_track_filtered()')}
     <div class="card"><div class="tw"><table class="tbl">
       <thead><tr>
@@ -1364,7 +1372,8 @@ function render_c_track() {
       }).join('') : '<tr><td colspan="7" class="empty">لا توجد إجراءات بعد</td></tr>'}
       </tbody>
     </table></div></div>
-    <div id="c-track-detail"></div>`;
+    <div id="c-track-detail"></div>
+    </div>`;
   setTimeout(()=>showFilterCount('cf-track', rows.length, rows.length), 0);
 }
 window.render_c_track = render_c_track;
@@ -1478,6 +1487,177 @@ function cTrackDetail(itemId) {
   document.getElementById('c-track-detail').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
+
+// ═══════════════════════════════════════════
+//  تبويبات متابعة الإجراءات
+// ═══════════════════════════════════════════
+function showTrackTab(tab) {
+  // تحديث أزرار التبويب
+  ['procedures','agencies','reviewers'].forEach(t => {
+    const btn = document.getElementById('tab-'+t);
+    if (!btn) return;
+    btn.className = t===tab ? 'btn btn-p btn-sm' : 'btn btn-g btn-sm';
+    btn.style.fontSize='13px'; btn.style.padding='9px 18px';
+  });
+
+  const box = document.getElementById('track-tab-content');
+  if (!box) return;
+
+  if (tab === 'procedures') {
+    // إعادة عرض الجدول الأصلي
+    box.innerHTML = buildFilterBar('cf-track','render_c_track_filtered()') +
+      `<div class="card"><div class="tw"><table class="tbl">
+        <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>الجهة</th><th>تاريخ الإرسال</th><th>المتطلبات</th><th>الحالة العامة</th><th>عرض</th></tr></thead>
+        <tbody id="cf-track-body">
+        ${ALL_ITEMS.map(it => {
+          const reqs=getReqList(it),rs=getReqStatus(it);
+          const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+          let p=0,u=0,r=0,c=0;
+          rs.forEach(x=>{if(x.status==='pending')p++;else if(x.status==='under_review')u++;else if(x.status==='returned')r++;else if(x.status==='completed')c++;});
+          const overallStatus=c===reqs.length&&reqs.length>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+          let badge='';
+          if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
+          else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+          else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+          else badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+          return `<tr>
+            <td style="font-size:11px">${it.crit_title||'—'}</td>
+            <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
+            <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+            <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+            <td><span class="bdg ba" style="font-size:10px">✅${c}</span><span class="bdg bu" style="font-size:10px">🔵${u}</span><span class="bdg br" style="font-size:10px">↩${r}</span><span class="bdg bs" style="font-size:10px">⬜${p}</span></td>
+            <td>${badge}</td>
+            <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="empty">لا توجد إجراءات</td></tr>'}
+        </tbody></table></div></div>
+        <div id="c-track-detail"></div>`;
+  } else if (tab === 'agencies') {
+    render_track_agencies(box);
+  } else if (tab === 'reviewers') {
+    render_track_reviewers(box);
+  }
+}
+
+function render_track_agencies(box) {
+  const allAgs = {...AGS, ...EXTRA_AGENCIES};
+  const rows = Object.entries(allAgs).map(([k, ag]) => {
+    const items = ALL_ITEMS.filter(i => i.agency === k);
+    let pending=0, underReview=0, returned=0, completed=0;
+    items.forEach(it => getReqStatus(it).forEach(r => {
+      if(r.status==='pending') pending++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    }));
+    const total = pending+underReview+returned+completed;
+    const pct = total ? Math.round(completed/total*100) : 0;
+    return {k, ag, pending, underReview, returned, completed, total, pct};
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="ctit">🏢 متابعة الجهات</div>
+      <div class="tw"><table class="tbl">
+        <thead><tr>
+          <th>الجهة</th>
+          <th>الإجمالي</th>
+          <th>⬜ قيد الاستكمال</th>
+          <th>🔵 قيد المراجعة</th>
+          <th>↩ معاد للملاحظات</th>
+          <th>✅ مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(({k,ag,pending,underReview,returned,completed,total,pct}) => `<tr>
+          <td style="font-weight:600">${ag.icon||'🏢'} ${ag.name}</td>
+          <td style="font-weight:700;color:var(--pd)">${total}</td>
+          <td>${pending ? `<span class="bdg bs">${pending}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${underReview ? `<span class="bdg bu">${underReview}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${returned ? `<span class="bdg br">${returned}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${completed ? `<span class="bdg ba">${completed}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+              <span style="font-size:11px;font-weight:700;min-width:34px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+function render_track_reviewers(box) {
+  // احتساب الإحصائيات لكل مراجع
+  const rows = Object.entries(REVIEWERS).map(([k, rv]) => {
+    // الإجراءات التي أرسلها هذا المراجع
+    const sent = ALL_ITEMS.filter(it => it.sent_by === k);
+
+    let pending=0, underReview=0, returned=0, completed=0;
+    sent.forEach(it => getReqStatus(it).forEach(r => {
+      if(r.status==='pending') pending++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    }));
+
+    // احتساب المتطلبات "غير المرسلة" — معايير مخصصة للمراجع لكن لم يرسل فيها إجراءات
+    const myCrits = rv.criteria || [];
+    let totalExpected = 0;
+    myCrits.forEach(cn => {
+      const main = INST_CRITERIA.find(m => String(m.num) === String(cn));
+      if (!main) return;
+      main.subs.forEach(sub => {
+        sub.criteria.forEach(crit => {
+          const reqs = (INST_REQUIREMENTS[crit.num] || []).filter(r => r && r.trim());
+          totalExpected += reqs.length;
+        });
+      });
+    });
+    const totalSent = pending + underReview + returned + completed;
+    const notSent = Math.max(0, totalExpected - totalSent);
+    const pct = totalExpected ? Math.round(completed/totalExpected*100) : 0;
+
+    return {k, rv, notSent, pending, underReview, returned, completed, totalExpected, pct};
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="ctit">👤 متابعة المراجعين</div>
+      ${rows.length ? `<div class="tw"><table class="tbl">
+        <thead><tr>
+          <th>المراجع</th>
+          <th>المعايير المخصصة</th>
+          <th>⚪ غير مرسل</th>
+          <th>⬜ قيد الاستكمال</th>
+          <th>🔵 قيد المراجعة</th>
+          <th>↩ معاد للملاحظات</th>
+          <th>✅ مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(({k,rv,notSent,pending,underReview,returned,completed,totalExpected,pct}) => `<tr>
+          <td style="font-weight:600">👤 ${rv.name}</td>
+          <td style="font-size:11px">${(rv.criteria||[]).map(cn=>{const m=INST_CRITERIA.find(x=>String(x.num)===String(cn));return m?`<span class="chip" style="font-size:10px">معيار ${m.num}</span>`:''}).join('')}</td>
+          <td>${notSent ? `<span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:2px 8px;font-size:12px">${notSent}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${pending ? `<span class="bdg bs">${pending}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${underReview ? `<span class="bdg bu">${underReview}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${returned ? `<span class="bdg br">${returned}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${completed ? `<span class="bdg ba">${completed}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+              <span style="font-size:11px;font-weight:700;min-width:34px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="empty">لا يوجد مراجعون في النظام بعد</div>'}
+    </div>`;
+}
+
+
 function render_c_track_filtered() {
   const allRows = [];
   ALL_ITEMS.forEach(it => {
@@ -1528,6 +1708,177 @@ function render_c_track_filtered() {
 }
 
 
+
+// ═══════════════════════════════════════════
+//  تبويبات متابعة الإجراءات
+// ═══════════════════════════════════════════
+function showTrackTab(tab) {
+  // تحديث أزرار التبويب
+  ['procedures','agencies','reviewers'].forEach(t => {
+    const btn = document.getElementById('tab-'+t);
+    if (!btn) return;
+    btn.className = t===tab ? 'btn btn-p btn-sm' : 'btn btn-g btn-sm';
+    btn.style.fontSize='13px'; btn.style.padding='9px 18px';
+  });
+
+  const box = document.getElementById('track-tab-content');
+  if (!box) return;
+
+  if (tab === 'procedures') {
+    // إعادة عرض الجدول الأصلي
+    box.innerHTML = buildFilterBar('cf-track','render_c_track_filtered()') +
+      `<div class="card"><div class="tw"><table class="tbl">
+        <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>الجهة</th><th>تاريخ الإرسال</th><th>المتطلبات</th><th>الحالة العامة</th><th>عرض</th></tr></thead>
+        <tbody id="cf-track-body">
+        ${ALL_ITEMS.map(it => {
+          const reqs=getReqList(it),rs=getReqStatus(it);
+          const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+          let p=0,u=0,r=0,c=0;
+          rs.forEach(x=>{if(x.status==='pending')p++;else if(x.status==='under_review')u++;else if(x.status==='returned')r++;else if(x.status==='completed')c++;});
+          const overallStatus=c===reqs.length&&reqs.length>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+          let badge='';
+          if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
+          else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+          else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+          else badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+          return `<tr>
+            <td style="font-size:11px">${it.crit_title||'—'}</td>
+            <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
+            <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+            <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+            <td><span class="bdg ba" style="font-size:10px">✅${c}</span><span class="bdg bu" style="font-size:10px">🔵${u}</span><span class="bdg br" style="font-size:10px">↩${r}</span><span class="bdg bs" style="font-size:10px">⬜${p}</span></td>
+            <td>${badge}</td>
+            <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="empty">لا توجد إجراءات</td></tr>'}
+        </tbody></table></div></div>
+        <div id="c-track-detail"></div>`;
+  } else if (tab === 'agencies') {
+    render_track_agencies(box);
+  } else if (tab === 'reviewers') {
+    render_track_reviewers(box);
+  }
+}
+
+function render_track_agencies(box) {
+  const allAgs = {...AGS, ...EXTRA_AGENCIES};
+  const rows = Object.entries(allAgs).map(([k, ag]) => {
+    const items = ALL_ITEMS.filter(i => i.agency === k);
+    let pending=0, underReview=0, returned=0, completed=0;
+    items.forEach(it => getReqStatus(it).forEach(r => {
+      if(r.status==='pending') pending++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    }));
+    const total = pending+underReview+returned+completed;
+    const pct = total ? Math.round(completed/total*100) : 0;
+    return {k, ag, pending, underReview, returned, completed, total, pct};
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="ctit">🏢 متابعة الجهات</div>
+      <div class="tw"><table class="tbl">
+        <thead><tr>
+          <th>الجهة</th>
+          <th>الإجمالي</th>
+          <th>⬜ قيد الاستكمال</th>
+          <th>🔵 قيد المراجعة</th>
+          <th>↩ معاد للملاحظات</th>
+          <th>✅ مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(({k,ag,pending,underReview,returned,completed,total,pct}) => `<tr>
+          <td style="font-weight:600">${ag.icon||'🏢'} ${ag.name}</td>
+          <td style="font-weight:700;color:var(--pd)">${total}</td>
+          <td>${pending ? `<span class="bdg bs">${pending}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${underReview ? `<span class="bdg bu">${underReview}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${returned ? `<span class="bdg br">${returned}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${completed ? `<span class="bdg ba">${completed}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+              <span style="font-size:11px;font-weight:700;min-width:34px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+function render_track_reviewers(box) {
+  // احتساب الإحصائيات لكل مراجع
+  const rows = Object.entries(REVIEWERS).map(([k, rv]) => {
+    // الإجراءات التي أرسلها هذا المراجع
+    const sent = ALL_ITEMS.filter(it => it.sent_by === k);
+
+    let pending=0, underReview=0, returned=0, completed=0;
+    sent.forEach(it => getReqStatus(it).forEach(r => {
+      if(r.status==='pending') pending++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    }));
+
+    // احتساب المتطلبات "غير المرسلة" — معايير مخصصة للمراجع لكن لم يرسل فيها إجراءات
+    const myCrits = rv.criteria || [];
+    let totalExpected = 0;
+    myCrits.forEach(cn => {
+      const main = INST_CRITERIA.find(m => String(m.num) === String(cn));
+      if (!main) return;
+      main.subs.forEach(sub => {
+        sub.criteria.forEach(crit => {
+          const reqs = (INST_REQUIREMENTS[crit.num] || []).filter(r => r && r.trim());
+          totalExpected += reqs.length;
+        });
+      });
+    });
+    const totalSent = pending + underReview + returned + completed;
+    const notSent = Math.max(0, totalExpected - totalSent);
+    const pct = totalExpected ? Math.round(completed/totalExpected*100) : 0;
+
+    return {k, rv, notSent, pending, underReview, returned, completed, totalExpected, pct};
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="ctit">👤 متابعة المراجعين</div>
+      ${rows.length ? `<div class="tw"><table class="tbl">
+        <thead><tr>
+          <th>المراجع</th>
+          <th>المعايير المخصصة</th>
+          <th>⚪ غير مرسل</th>
+          <th>⬜ قيد الاستكمال</th>
+          <th>🔵 قيد المراجعة</th>
+          <th>↩ معاد للملاحظات</th>
+          <th>✅ مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(({k,rv,notSent,pending,underReview,returned,completed,totalExpected,pct}) => `<tr>
+          <td style="font-weight:600">👤 ${rv.name}</td>
+          <td style="font-size:11px">${(rv.criteria||[]).map(cn=>{const m=INST_CRITERIA.find(x=>String(x.num)===String(cn));return m?`<span class="chip" style="font-size:10px">معيار ${m.num}</span>`:''}).join('')}</td>
+          <td>${notSent ? `<span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:2px 8px;font-size:12px">${notSent}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${pending ? `<span class="bdg bs">${pending}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${underReview ? `<span class="bdg bu">${underReview}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${returned ? `<span class="bdg br">${returned}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${completed ? `<span class="bdg ba">${completed}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+              <span style="font-size:11px;font-weight:700;min-width:34px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="empty">لا يوجد مراجعون في النظام بعد</div>'}
+    </div>`;
+}
+
+
 function render_c_track_filtered() {
   const allRows = [];
   ALL_ITEMS.forEach(it => {
@@ -1570,6 +1921,177 @@ function render_c_track_filtered() {
   showFilterCount('cf-track', filtered.length, allRows.length);
 }
 ;
+
+
+// ═══════════════════════════════════════════
+//  تبويبات متابعة الإجراءات
+// ═══════════════════════════════════════════
+function showTrackTab(tab) {
+  // تحديث أزرار التبويب
+  ['procedures','agencies','reviewers'].forEach(t => {
+    const btn = document.getElementById('tab-'+t);
+    if (!btn) return;
+    btn.className = t===tab ? 'btn btn-p btn-sm' : 'btn btn-g btn-sm';
+    btn.style.fontSize='13px'; btn.style.padding='9px 18px';
+  });
+
+  const box = document.getElementById('track-tab-content');
+  if (!box) return;
+
+  if (tab === 'procedures') {
+    // إعادة عرض الجدول الأصلي
+    box.innerHTML = buildFilterBar('cf-track','render_c_track_filtered()') +
+      `<div class="card"><div class="tw"><table class="tbl">
+        <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>الجهة</th><th>تاريخ الإرسال</th><th>المتطلبات</th><th>الحالة العامة</th><th>عرض</th></tr></thead>
+        <tbody id="cf-track-body">
+        ${ALL_ITEMS.map(it => {
+          const reqs=getReqList(it),rs=getReqStatus(it);
+          const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+          let p=0,u=0,r=0,c=0;
+          rs.forEach(x=>{if(x.status==='pending')p++;else if(x.status==='under_review')u++;else if(x.status==='returned')r++;else if(x.status==='completed')c++;});
+          const overallStatus=c===reqs.length&&reqs.length>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+          let badge='';
+          if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
+          else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+          else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+          else badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+          return `<tr>
+            <td style="font-size:11px">${it.crit_title||'—'}</td>
+            <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
+            <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+            <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+            <td><span class="bdg ba" style="font-size:10px">✅${c}</span><span class="bdg bu" style="font-size:10px">🔵${u}</span><span class="bdg br" style="font-size:10px">↩${r}</span><span class="bdg bs" style="font-size:10px">⬜${p}</span></td>
+            <td>${badge}</td>
+            <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="empty">لا توجد إجراءات</td></tr>'}
+        </tbody></table></div></div>
+        <div id="c-track-detail"></div>`;
+  } else if (tab === 'agencies') {
+    render_track_agencies(box);
+  } else if (tab === 'reviewers') {
+    render_track_reviewers(box);
+  }
+}
+
+function render_track_agencies(box) {
+  const allAgs = {...AGS, ...EXTRA_AGENCIES};
+  const rows = Object.entries(allAgs).map(([k, ag]) => {
+    const items = ALL_ITEMS.filter(i => i.agency === k);
+    let pending=0, underReview=0, returned=0, completed=0;
+    items.forEach(it => getReqStatus(it).forEach(r => {
+      if(r.status==='pending') pending++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    }));
+    const total = pending+underReview+returned+completed;
+    const pct = total ? Math.round(completed/total*100) : 0;
+    return {k, ag, pending, underReview, returned, completed, total, pct};
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="ctit">🏢 متابعة الجهات</div>
+      <div class="tw"><table class="tbl">
+        <thead><tr>
+          <th>الجهة</th>
+          <th>الإجمالي</th>
+          <th>⬜ قيد الاستكمال</th>
+          <th>🔵 قيد المراجعة</th>
+          <th>↩ معاد للملاحظات</th>
+          <th>✅ مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(({k,ag,pending,underReview,returned,completed,total,pct}) => `<tr>
+          <td style="font-weight:600">${ag.icon||'🏢'} ${ag.name}</td>
+          <td style="font-weight:700;color:var(--pd)">${total}</td>
+          <td>${pending ? `<span class="bdg bs">${pending}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${underReview ? `<span class="bdg bu">${underReview}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${returned ? `<span class="bdg br">${returned}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${completed ? `<span class="bdg ba">${completed}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+              <span style="font-size:11px;font-weight:700;min-width:34px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+function render_track_reviewers(box) {
+  // احتساب الإحصائيات لكل مراجع
+  const rows = Object.entries(REVIEWERS).map(([k, rv]) => {
+    // الإجراءات التي أرسلها هذا المراجع
+    const sent = ALL_ITEMS.filter(it => it.sent_by === k);
+
+    let pending=0, underReview=0, returned=0, completed=0;
+    sent.forEach(it => getReqStatus(it).forEach(r => {
+      if(r.status==='pending') pending++;
+      else if(r.status==='under_review') underReview++;
+      else if(r.status==='returned') returned++;
+      else if(r.status==='completed') completed++;
+    }));
+
+    // احتساب المتطلبات "غير المرسلة" — معايير مخصصة للمراجع لكن لم يرسل فيها إجراءات
+    const myCrits = rv.criteria || [];
+    let totalExpected = 0;
+    myCrits.forEach(cn => {
+      const main = INST_CRITERIA.find(m => String(m.num) === String(cn));
+      if (!main) return;
+      main.subs.forEach(sub => {
+        sub.criteria.forEach(crit => {
+          const reqs = (INST_REQUIREMENTS[crit.num] || []).filter(r => r && r.trim());
+          totalExpected += reqs.length;
+        });
+      });
+    });
+    const totalSent = pending + underReview + returned + completed;
+    const notSent = Math.max(0, totalExpected - totalSent);
+    const pct = totalExpected ? Math.round(completed/totalExpected*100) : 0;
+
+    return {k, rv, notSent, pending, underReview, returned, completed, totalExpected, pct};
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="ctit">👤 متابعة المراجعين</div>
+      ${rows.length ? `<div class="tw"><table class="tbl">
+        <thead><tr>
+          <th>المراجع</th>
+          <th>المعايير المخصصة</th>
+          <th>⚪ غير مرسل</th>
+          <th>⬜ قيد الاستكمال</th>
+          <th>🔵 قيد المراجعة</th>
+          <th>↩ معاد للملاحظات</th>
+          <th>✅ مكتمل</th>
+          <th>نسبة الإنجاز</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(({k,rv,notSent,pending,underReview,returned,completed,totalExpected,pct}) => `<tr>
+          <td style="font-weight:600">👤 ${rv.name}</td>
+          <td style="font-size:11px">${(rv.criteria||[]).map(cn=>{const m=INST_CRITERIA.find(x=>String(x.num)===String(cn));return m?`<span class="chip" style="font-size:10px">معيار ${m.num}</span>`:''}).join('')}</td>
+          <td>${notSent ? `<span style="background:#f3f4f6;color:#374151;border-radius:6px;padding:2px 8px;font-size:12px">${notSent}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${pending ? `<span class="bdg bs">${pending}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${underReview ? `<span class="bdg bu">${underReview}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${returned ? `<span class="bdg br">${returned}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>${completed ? `<span class="bdg ba">${completed}</span>` : '<span style="color:var(--mu)">—</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
+              <span style="font-size:11px;font-weight:700;min-width:34px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="empty">لا يوجد مراجعون في النظام بعد</div>'}
+    </div>`;
+}
+
 
 function render_c_track_filtered() {
   const allRows = [];
@@ -1884,7 +2406,7 @@ function getReqStatus(it) {
 
 const REQ_STX = {
   pending: '⬜ غير مكتمل',
-  under_review: '🔵 تحت المراجعة',
+  under_review: '🔵 قيد المراجعة',
   returned: '↩ معاد للملاحظات',
   completed: '✅ مكتمل'
 };
@@ -3808,8 +4330,8 @@ function buildFilterBar(id, onchange) {
   // جمع كل القيم الممكنة من ALL_ITEMS
   const agencies = [...new Set(ALL_ITEMS.map(i=>i.agency_name).filter(Boolean))];
   const statuses = [
-    {v:'pending',      l:'⬜ لم يُرفع'},
-    {v:'under_review', l:'🔵 تحت المراجعة'},
+    {v:'pending',      l:'⬜ قيد الاستكمال'},
+    {v:'under_review', l:'🔵 قيد المراجعة'},
     {v:'returned',     l:'↩ معاد للملاحظات'},
     {v:'completed',    l:'✅ مكتمل'},
   ];
