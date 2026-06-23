@@ -543,46 +543,11 @@ function buildCommittee() {
 
   document.getElementById('mc').innerHTML = `
     <div class="screen active" id="c-home"></div>
-    <div class="screen" id="c-crit"></div>
-    <div class="screen" id="c-agencies"></div>
-    <div class="screen" id="c-clear"></div>
-    <div class="screen" id="c-profile"></div>
-    <div class="screen" id="c-send">
-      <div class="ph"><div class="pht"><h1>إرسال إجراء</h1><p>اختر المعيار الرئيسي والمعيار الفرعي والجهة — تظهر محكاته ومتطلباته تلقائياً</p></div></div>
-      <div class="card" style="max-width:680px">
-        <div class="fg"><label class="fl">المعيار الرئيسي *</label>
-          <select class="fc" id="cs-main" onchange="cFillSubs()"><option value="">— اختر —</option></select></div>
-        <div class="fg"><label class="fl">المعيار الفرعي (الإجراء) *</label>
-          <select class="fc" id="cs-sub" onchange="cFillCritList()"><option value="">— اختر —</option></select></div>
-        <div class="fg" id="cs-crit-wrap" style="display:none">
-          <label class="fl">المحك *</label>
-          <select class="fc" id="cs-crit" onchange="cFillInstReqs()"><option value="">— اختر —</option></select>
-        </div>
-        <div class="fg" id="cs-inst-reqs-wrap" style="display:none">
-          <label class="fl">المتطلبات المرتبطة بهذا المحك</label>
-          <div id="cs-inst-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div>
-        </div>
-        <div class="fg"><label class="fl">الجهة *</label>
-          <select class="fc" id="cs-a"><option value="">— اختر —</option>
-          <option value="academic">📚 وكالة الجامعة للشؤون التعليمية</option>
-          <option value="main">🏫 وكالة الجامعة</option>
-          <option value="postgrad">🎓 وكالة الجامعة للدراسات العليا والبحث العلمي</option></select></div>
-        <div class="fg"><label class="fl">الملاحظات والتعليمات للجهة *</label>
-          <textarea class="fc" id="cs-n" placeholder="اكتب المتطلبات..."></textarea></div>
-        <div class="fg"><label class="fl">مستند مرجعي (اختياري)</label>
-          <div class="uz" id="cs-uz" onclick="document.getElementById('cs-f').click()">📎 اضغط لإرفاق مستند</div>
-          <input type="file" id="cs-f" style="display:none" onchange="cMF(this)"></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-p" onclick="cSend()">إرسال ←</button>
-          <button class="btn btn-g" onclick="cClr()">مسح</button>
-        </div>
-      </div>
-    </div>
     <div class="screen" id="c-appr"></div>
     <div class="screen" id="c-appr-detail"></div>
     <div class="screen" id="c-track"></div>
-    <div class="screen" id="c-reviewers"></div>
-    <div class="screen" id="c-log"></div>`;
+    <div class="screen" id="c-log"></div>
+    <div class="screen" id="c-profile"></div>`;
 
   render_c_home(); updateBadges();
   // Update agency select with any extra agencies
