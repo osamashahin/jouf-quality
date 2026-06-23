@@ -3136,19 +3136,7 @@ function render_c_reviewers() {
       <div id="nrv-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
       <button class="btn btn-p" onclick="addReviewer()">إضافة المراجع ←</button>
     </div>
-
-    <div class="card" style="max-width:580px">
-      <div class="ctit">📧 إعداد الإرسال التلقائي للبريد (EmailJS)</div>
-      <div class="notif ni" style="margin-bottom:14px">💡 أنشئ حساباً مجانياً في <a href="https://www.emailjs.com" target="_blank" style="color:var(--pd)">emailjs.com</a> ثم أدخل البيانات أدناه لإرسال البريد مباشرة من النظام بدون Outlook.</div>
-      <div class="fg"><label class="fl">Service ID</label>
-        <input class="fc" id="ejs-sid" placeholder="service_xxxxxxx" dir="ltr" value="${window.EMAILJS_CONFIG?.serviceId||''}"></div>
-      <div class="fg"><label class="fl">Template ID</label>
-        <input class="fc" id="ejs-tid" placeholder="template_xxxxxxx" dir="ltr" value="${window.EMAILJS_CONFIG?.templateId||''}"></div>
-      <div class="fg"><label class="fl">Public Key</label>
-        <input class="fc" id="ejs-pk" placeholder="xxxxxxxxxxxxxxxxxxxxxx" dir="ltr" value="${window.EMAILJS_CONFIG?.publicKey||''}"></div>
-      <button class="btn btn-p btn-sm" onclick="saveEmailJSConfig()">💾 حفظ الإعدادات</button>
-      ${window.EMAILJS_CONFIG?.serviceId ? '<span style="font-size:12px;color:var(--ok);margin-right:10px">✅ EmailJS مُفعَّل</span>' : '<span style="font-size:12px;color:var(--mu);margin-right:10px">⬜ غير مُفعَّل — سيُستخدم تطبيق البريد</span>'}
-    </div>`;
+`;
 }
 window.render_c_reviewers = render_c_reviewers;
 
@@ -3203,57 +3191,93 @@ function sendCredentialsByEmail(reviewerKey) {
     return m ? `معيار ${m.num}: ${m.title}` : cn;
   });
 
-  // ── محاولة الإرسال عبر EmailJS إذا كانت مُهيَّأة ──
-  const EJS = window.EMAILJS_CONFIG || {};
-  if (EJS.serviceId && EJS.templateId && EJS.publicKey && window.emailjs) {
-    emailjs.init(EJS.publicKey);
-    emailjs.send(EJS.serviceId, EJS.templateId, {
-      to_email:   rv.email,
-      to_name:    rv.name,
-      username:   reviewerKey,
-      password:   rv.pass,
-      system_url: 'https://osamashahin.github.io/jouf-quality/',
-      criteria:   critNames.join('\n'),
-    }).then(() => {
-      toast('✅ تم إرسال البريد الإلكتروني إلى ' + rv.email + ' بنجاح', true);
-    }).catch(err => {
-      toast('❗ فشل الإرسال عبر EmailJS: ' + (err.text||err.message||'خطأ'));
-    });
-    return;
-  }
+  const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>بيانات الدخول</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:Arial,sans-serif;background:#f3f4f6;direction:rtl;padding:30px}
+  .wrap{max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10)}
+  .hdr{background:#6b3fa0;padding:26px 24px;text-align:center}
+  .hdr h1{color:#fff;font-size:20px;margin-bottom:4px}
+  .hdr p{color:#d4b8f0;font-size:13px}
+  .body{padding:26px 24px}
+  .greet{font-size:14px;color:#333;line-height:1.8;margin-bottom:20px}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px}
+  td{padding:11px 14px;font-size:13px;border-bottom:1px solid #ede9f5}
+  td:first-child{color:#6b3fa0;font-weight:700;width:40%;background:#faf7fe}
+  .crit-box{background:#faf7fe;border-radius:8px;padding:14px;margin-bottom:16px}
+  .crit-box h3{color:#6b3fa0;font-size:13px;margin-bottom:8px}
+  .crit-box li{font-size:12px;color:#444;line-height:2;margin-right:14px}
+  .note{background:#fffbeb;border-right:4px solid #f59e0b;padding:10px 14px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:16px}
+  .ftr{background:#6b3fa0;padding:16px 24px;text-align:center}
+  .ftr p{color:#d4b8f0;font-size:12px;line-height:1.8}
+  .btn-send{display:block;width:100%;padding:12px;background:#6b3fa0;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:Arial;margin-top:8px;text-align:center}
+  .toolbar{background:#1f2937;padding:12px 20px;display:flex;align-items:center;gap:10px;border-radius:8px 8px 0 0}
+  .toolbar span{color:#fff;font-size:13px;flex:1}
+  .tbtn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span>📧 معاينة الإيميل — ${rv.name}</span>
+  <button class="tbtn" style="background:#6b3fa0;color:#fff" onclick="sendEmail()">📤 فتح تطبيق البريد وإرسال</button>
+  <button class="tbtn" style="background:#374151;color:#fff" onclick="window.print()">🖨 طباعة</button>
+</div>
+<div class="wrap">
+  <div class="hdr">
+    <h1>🏛 جامعة الجوف</h1>
+    <p>عمادة التطوير والجودة</p>
+  </div>
+  <div class="body">
+    <p class="greet">
+      تحية طيبة،<br><br>
+      الأستاذ/ة <strong>${rv.name}</strong>،<br><br>
+      نُفيدكم بأنه تم تعيينكم مراجعاً في <strong>نظام متابعة أعمال الجودة</strong>
+      بجامعة الجوف. يُرجى الاطلاع على بيانات دخولكم:
+    </p>
+    <table>
+      <tr><td>الاسم</td><td>${rv.name}</td></tr>
+      <tr><td>اسم المستخدم</td><td>${reviewerKey}</td></tr>
+      <tr><td>كلمة المرور</td><td>${rv.pass}</td></tr>
+      <tr><td>رابط النظام</td><td><a href="https://osamashahin.github.io/jouf-quality/" style="color:#6b3fa0">اضغط هنا للدخول</a></td></tr>
+    </table>
+    <div class="crit-box">
+      <h3>📋 المعايير المخصصة لكم:</h3>
+      <ul>${critNames.map(c=>`<li>${c}</li>`).join('')}</ul>
+    </div>
+    <div class="note">
+      ⚠️ يُرجى تغيير كلمة المرور فور أول دخول من شاشة "بياناتي وكلمة المرور".
+    </div>
+    <p style="font-size:12px;color:#888;line-height:1.8">
+      يُرجى التواصل مع عمادة التطوير والجودة عند أي استفسار.
+    </p>
+  </div>
+  <div class="ftr">
+    <p>عمادة التطوير والجودة<br>جامعة الجوف</p>
+  </div>
+</div>
+<script>
+function sendEmail() {
+  const subject = encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة - جامعة الجوف');
+  const body = encodeURIComponent(
+    'السلام عليكم\n\nالاستاذ/ة ${rv.name}\n\n' +
+    'الاسم: ${rv.name}\n' +
+    'اسم المستخدم: ${reviewerKey}\n' +
+    'كلمة المرور: ${rv.pass}\n' +
+    'رابط النظام: https://osamashahin.github.io/jouf-quality/\n\n' +
+    'المعايير المخصصة:\n${critNames.map(c=>'- '+c).join('\\n')}\n\n' +
+    'مع تحيات عمادة التطوير والجودة - جامعة الجوف'
+  );
+  window.open('mailto:${rv.email}?subject=' + subject + '&body=' + body);
+}
+<\/script>
+</body></html>`;
 
-  // ── fallback: فتح تطبيق البريد ──
-  const subject = encodeURIComponent('بيانات الدخول — نظام متابعة أعمال الجودة — جامعة الجوف');
-  // استخدام نص بسيط متوافق مع جميع برامج البريد
-  const lines = [
-    'السلام عليكم ورحمة الله وبركاته',
-    '',
-    'الاستاذ/ة ' + rv.name,
-    '',
-    'نفيدكم بانه تم تعيينكم مراجعا في نظام متابعة اعمال الجودة بجامعة الجوف',
-    'يرجى الاطلاع على بيانات الدخول:',
-    '',
-    'الاسم: ' + rv.name,
-    'اسم المستخدم: ' + reviewerKey,
-    'كلمة المرور: ' + rv.pass,
-    'رابط النظام: https://osamashahin.github.io/jouf-quality/',
-    '',
-    'المعايير المخصصة:',
-    critNames.map(c => '- ' + c).join('\n'),
-    '',
-    'يرجى تغيير كلمة المرور بعد اول دخول من شاشة بياناتي وكلمة المرور',
-    '',
-    'عمادة التطوير والجودة - جامعة الجوف',
-  ];
-  const body = encodeURIComponent(lines.join('\n'));
-
-  const a = document.createElement('a');
-  a.href = 'mailto:' + rv.email + '?subject=' + subject + '&body=' + body;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => document.body.removeChild(a), 500);
-  toast('✓ تم فتح تطبيق البريد — اضغط إرسال', true);
+  const win = window.open('', '_blank', 'width=620,height=750,scrollbars=yes');
+  win.document.write(html);
+  win.document.close();
+  toast('✓ تم فتح معاينة الإيميل — اضغط "فتح تطبيق البريد وإرسال"', true);
 }
 
 async function removeReviewer(key) {
@@ -3281,6 +3305,8 @@ function buildReviewer() {
     <div class="sbi" onclick="sbAct(this);showScreen('rv-send');rvBuildSend()">${ico.send}إرسال إجراء</div>
     <div class="sbi" onclick="sbAct(this);showScreen('rv-appr');render_rv_appr()">${ico.doc}اعتماد الإجراءات<span class="sbdg" id="bdg-rv" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
     <div class="sbi" onclick="sbAct(this);showScreen('rv-track');render_rv_track()">${ico.list}متابعة الإجراءات</div>
+    <div class="sbg">السجلات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('rv-log');render_rv_log()">${ico.pen}سجل النشاط</div>
     <div class="sbg">الحساب</div>
     <div class="sbi" onclick="sbAct(this);showScreen('rv-profile');render_rv_profile()">${ico.pen}بياناتي وكلمة المرور</div>`;
 
@@ -3290,6 +3316,7 @@ function buildReviewer() {
     <div class="screen" id="rv-appr"></div>
     <div class="screen" id="rv-appr-detail"></div>
     <div class="screen" id="rv-track"></div>
+    <div class="screen" id="rv-log"></div>
     <div class="screen" id="rv-profile"></div>`;
 
   render_rv_home();
@@ -3331,11 +3358,7 @@ function render_rv_home() {
       <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
     </div>
-    <div class="card"><div class="ctit">${ico.clock}آخر النشاطات</div>
-      ${ALL_LOGS.filter(l=>l.actor===CU.name||l.msg.includes(CU.name)).slice(0,10)
-        .map(l=>`<div class="ar"><div class="ad"></div><div style="flex:1">${l.msg}</div><span class="at">${fmtDate(l.created_at)}</span></div>`).join('')
-        || '<div class="empty">لا يوجد نشاط بعد</div>'}
-    </div>`;
+`;
 }
 window.render_rv_home = render_rv_home;
 
@@ -3646,6 +3669,53 @@ function render_rv_track_filtered() {
 }
 
 // ─── بيانات المراجع ───
+function render_rv_log() {
+  const actors = [...new Set(ALL_LOGS.map(l=>l.actor).filter(Boolean))];
+  document.getElementById('rv-log').innerHTML = `
+    <div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>جميع الأنشطة في النظام — ${ALL_LOGS.length} نشاط</p></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_rv_log();toast('تم التحديث')})">🔄</button>
+      <button class="btn btn-er btn-sm" onclick="clearActivityLog().then(()=>render_rv_log())">🗑 مسح السجل</button>
+    </div></div>
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div style="flex:1;min-width:160px"><label class="fl">🔍 بحث</label>
+          <input class="fc" id="rvlog-q" placeholder="ابحث في النشاطات..." oninput="rvFilterLog()"></div>
+        <div style="min-width:150px"><label class="fl">المستخدم</label>
+          <select class="fc" id="rvlog-actor" onchange="rvFilterLog()">
+            <option value="">الكل</option>
+            ${actors.map(a=>`<option value="${a}">${a}</option>`).join('')}
+          </select></div>
+        <div style="min-width:120px"><label class="fl">من تاريخ</label>
+          <input class="fc" type="date" id="rvlog-from" onchange="rvFilterLog()"></div>
+        <div style="min-width:120px"><label class="fl">إلى تاريخ</label>
+          <input class="fc" type="date" id="rvlog-to" onchange="rvFilterLog()"></div>
+        <button class="btn btn-g btn-sm" onclick="['rvlog-q','rvlog-actor','rvlog-from','rvlog-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});rvFilterLog()">✕ مسح</button>
+      </div>
+      <div id="rvlog-count" style="font-size:11px;color:var(--mu);margin-top:6px">${ALL_LOGS.length} نشاط</div>
+    </div>
+    <div class="card" id="rvlog-body">${renderLogItems(ALL_LOGS)}</div>`;
+}
+
+function rvFilterLog() {
+  const q     = (document.getElementById('rvlog-q')?.value||'').toLowerCase();
+  const actor = document.getElementById('rvlog-actor')?.value||'';
+  const from  = document.getElementById('rvlog-from')?.value||'';
+  const to    = document.getElementById('rvlog-to')?.value||'';
+  const filtered = ALL_LOGS.filter(l => {
+    if (q && !l.msg?.toLowerCase().includes(q) && !l.actor?.toLowerCase().includes(q)) return false;
+    if (actor && l.actor !== actor) return false;
+    const day = l.created_at ? l.created_at.split('T')[0] : '';
+    if (from && day < from) return false;
+    if (to   && day > to)   return false;
+    return true;
+  });
+  const body = document.getElementById('rvlog-body');
+  const cnt  = document.getElementById('rvlog-count');
+  if (body) body.innerHTML = renderLogItems(filtered);
+  if (cnt)  cnt.textContent = `${filtered.length} من ${ALL_LOGS.length} نشاط`;
+}
+
 function rvShowTimeline(itemId, idx) {
   const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
   const reqs=getReqList(it), rs=getReqStatus(it);
