@@ -512,7 +512,8 @@ async function enterApp() {
     // حفظ كلمات المرور الأصلية إن لم تكن محفوظة
     await saveInitialPasswords();
     loading(false);
-    if(CU.role==='committee' || CU.role==='admin') buildCommittee();
+    if(CU.role==='committee') buildCommittee();
+    else if(CU.role==='admin') buildAdmin();
     else if(CU.role==='agency') buildAgency();
     else if(CU.role==='reviewer') buildReviewer();
     if(refreshTimer) clearInterval(refreshTimer);
