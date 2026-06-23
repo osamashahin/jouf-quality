@@ -86,11 +86,11 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--tx);directi
 .ph{margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-start}
 .pht h1{font-size:19px;font-weight:800}
 .pht p{font-size:12px;color:var(--mu);margin-top:2px}
-.sr{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
-.sc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px;text-align:center;box-shadow:var(--sh)}
-.sc .num{font-size:28px;font-weight:900;line-height:1}
-.sc .lbl{font-size:11px;color:var(--mu);margin-top:3px;font-weight:600}
-.sc .ico{font-size:20px;margin-bottom:6px}
+.sr{display:flex;gap:8px;margin-bottom:14px;flex-wrap:nowrap;overflow-x:auto}
+.sc{background:#fff;border-radius:10px;padding:10px 12px;flex:1;min-width:100px;text-align:center;border:1px solid var(--bd)}
+.sc .num{font-size:22px;font-weight:800;color:var(--dark);line-height:1}
+.sc .lbl{font-size:10px;color:var(--mu);margin-top:3px}
+.sc .ico{font-size:20px;margin-bottom:4px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px 18px;margin-bottom:14px;box-shadow:var(--sh)}
 .ctit{font-size:13px;font-weight:700;margin-bottom:13px;display:flex;align-items:center;gap:7px}
@@ -850,48 +850,7 @@ function render_c_home() {
     </div>
 
     <!-- إحصائيات الجهات -->
-    <div class="card">
-      <div class="ctit">${ico.ppl}تقدم الجهات</div>
-      <div style="overflow-x:auto"><table class="tbl">
-        <thead><tr>
-          <th>الجهة</th>
-          <th>الإجمالي</th>
-          <th>لم يُرفع</th>
-          <th>قيد المراجعة</th>
-          <th>معاد</th>
-          <th>مكتمل</th>
-          <th>نسبة الإنجاز</th>
-        </tr></thead>
-        <tbody>
-          ${Object.entries({...AGS,...EXTRA_AGENCIES}).map(([k,ag])=>{
-            const items=ALL_ITEMS.filter(i=>i.agency===k);
-            let p=0,u=0,rv=0,c=0;
-            items.forEach(it=>getReqStatus(it).forEach(x=>{
-              if(x.status==='pending')p++;
-              else if(x.status==='under_review')u++;
-              else if(x.status==='returned')rv++;
-              else if(x.status==='completed')c++;
-            }));
-            const tot=p+u+rv+c;
-            const pct=tot?Math.round(c/tot*100):0;
-            return `<tr>
-              <td style="font-weight:600">${ag.icon||'🏢'} ${ag.name}</td>
-              <td>${tot}</td>
-              <td>${p?`<span class="bdg bs">${p}</span>`:'-'}</td>
-              <td>${u?`<span class="bdg bu">${u}</span>`:'-'}</td>
-              <td>${rv?`<span class="bdg br">${rv}</span>`:'-'}</td>
-              <td>${c?`<span class="bdg ba">${c}</span>`:'-'}</td>
-              <td>
-                <div style="display:flex;align-items:center;gap:6px">
-                  <div class="prog" style="flex:1;margin:0"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#6b3fa0'}"></div></div>
-                  <span style="font-size:11px;font-weight:700;min-width:30px">${pct}%</span>
-                </div>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table></div>
-    </div>
+    
 
 `;
 }
