@@ -3221,7 +3221,8 @@ function sendCredentialsByEmail(reviewerKey) {
 <body>
 <div class="toolbar">
   <span>📧 معاينة الإيميل — ${rv.name}</span>
-  <button class="tbtn" style="background:#6b3fa0;color:#fff" onclick="sendEmail()">📧 إرسال عبر Gmail</button>
+  <button class="tbtn" style="background:#16a34a;color:#fff" onclick="copyEmailText()" id="copybtn">📋 نسخ النص</button>
+  <button class="tbtn" style="background:#6b3fa0;color:#fff" onclick="sendEmail()">📧 Gmail</button>
   <button class="tbtn" style="background:#374151;color:#fff" onclick="window.print()">🖨 طباعة</button>
 </div>
 <div class="wrap">
@@ -3258,6 +3259,40 @@ function sendCredentialsByEmail(reviewerKey) {
   </div>
 </div>
 <script>
+function copyEmailText() {
+  const text =
+    'السلام عليكم ورحمة الله وبركاته\n\n' +
+    'الأستاذ/ة ${rv.name}،\n\n' +
+    'نُفيدكم بأنه تم تعيينكم مراجعاً في نظام متابعة أعمال الجودة بجامعة الجوف.\n' +
+    'يُرجى الاطلاع على بيانات دخولكم:\n\n' +
+    'الاسم           : ${rv.name}\n' +
+    'اسم المستخدم    : ${reviewerKey}\n' +
+    'كلمة المرور     : ${rv.pass}\n' +
+    'رابط النظام     : https://osamashahin.github.io/jouf-quality/\n\n' +
+    'المعايير المخصصة لكم:\n' +
+    '${critNames.map(c=>"- "+c).join("\n")}\n\n' +
+    'يُرجى تغيير كلمة المرور بعد أول دخول من شاشة "بياناتي وكلمة المرور".\n\n' +
+    'مع تحيات\n' +
+    'عمادة التطوير والجودة - جامعة الجوف';
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copybtn');
+    btn.textContent = '✅ تم النسخ!';
+    btn.style.background = '#15803d';
+    setTimeout(() => { btn.textContent = '📋 نسخ النص'; btn.style.background = '#16a34a'; }, 2500);
+  }).catch(() => {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn = document.getElementById('copybtn');
+    btn.textContent = '✅ تم النسخ!';
+    setTimeout(() => btn.textContent = '📋 نسخ النص', 2500);
+  });
+}
+
 function sendEmail() {
   const to      = '${rv.email}';
   const subject = encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة - جامعة الجوف');
