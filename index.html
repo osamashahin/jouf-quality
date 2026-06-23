@@ -1400,15 +1400,22 @@ function renderReqTimeline(r, reqText, idx) {
       }).join('')}
     </div>` : '';
 
-  // الملف الحالي (إذا لم يكن في history بعد)
-  const currentFile = r.file && status !== 'pending' ? `
-    <div style="margin-top:8px">
-      <a href="${r.file_url||'#'}" target="_blank" class="btn btn-g btn-sm"
-         style="font-size:11px;${!r.file_url?'opacity:0.5;pointer-events:none':''}">
-         ⬇ الملف الحالي: ${r.file}
-         <span style="color:var(--mu);font-size:10px;margin-right:4px">${fmtDate(r.uploaded_at)}</span>
-      </a>
-    </div>` : '';
+  // بناء قائمة الملفات (القديمة + الحالية) للإجراءات التي لا تحتوي على history بعد
+  const legacyFiles = [];
+  (r.file_history||[]).forEach((fh,fi)=>{
+    legacyFiles.push(`<a href="${fh.file_url||'#'}" target="_blank" class="btn btn-g btn-sm"
+      style="font-size:10.5px;margin-bottom:4px;${!fh.file_url?'opacity:0.5;pointer-events:none':''}">
+      ⬇ ملف ${fi+1} (سابق): ${fh.file}
+      <span style="color:var(--mu);font-size:9px;margin-right:4px">${fmtDate(fh.uploaded_at)}</span>
+    </a>`);
+  });
+  if(r.file) legacyFiles.push(`<a href="${r.file_url||'#'}" target="_blank" class="btn btn-g btn-sm"
+    style="font-size:10.5px;${!r.file_url?'opacity:0.5;pointer-events:none':''}">
+    ⬇ ${status==='completed'?'الملف المعتمد ✅':'الملف الحالي'}: ${r.file}
+    <span style="color:var(--mu);font-size:9px;margin-right:4px">${fmtDate(r.uploaded_at)}</span>
+  </a>`);
+  const legacyFilesHtml = legacyFiles.length ?
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${legacyFiles.join('')}</div>` : '';
 
   return `
     <div style="border:1px solid var(--bd);border-right:4px solid ${borderColor};border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff">
@@ -1417,9 +1424,9 @@ function renderReqTimeline(r, reqText, idx) {
         ${badge}
       </div>
       ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
-      ${r.committee_note&&status==='returned'?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
+      ${r.committee_note?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
       ${r.reviewed_by?`<div style="font-size:10.5px;color:#065f46;margin-bottom:4px">👤 راجعه: ${r.reviewed_by}</div>`:''}
-      ${history.length ? timelineHtml : currentFile}
+      ${history.length ? timelineHtml : legacyFilesHtml}
       ${!history.length && !r.file && status==='pending'?'<div style="font-size:11px;color:var(--mu)">لم يُرفع ملف بعد</div>':''}
     </div>`;
 }
@@ -2982,7 +2989,8 @@ function render_c_clear() {
     rejected: ALL_ITEMS.filter(i=>i.status==='rejected').length,
   };
 
-  document.getElementById('c-clear').innerHTML = `
+  const clearEl = document.getElementById('adm-clear') || document.getElementById('c-clear');
+  clearEl.innerHTML = `
     <div class="ph"><div class="pht"><h1>مسح جميع الإجراءات</h1><p>حذف نهائي لا يمكن التراجع عنه</p></div></div>
 
     <div class="card">
@@ -3175,10 +3183,15 @@ function sendCredentialsByEmail(reviewerKey) {
     'جامعة الجوف',
   ].join('\n'));
 
-  // فتح تطبيق البريد مباشرة
+  // فتح تطبيق البريد بدون مغادرة الصفحة
   const mailto = 'mailto:' + rv.email + '?subject=' + subject + '&body=' + body;
-  window.location.href = mailto;
-  toast('✓ جاري فتح تطبيق البريد...', true);
+  const a = document.createElement('a');
+  a.href = mailto;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 1000);
+  toast('✓ تم فتح تطبيق البريد — أضغط إرسال في برنامج البريد', true);
 }
 
 async function removeReviewer(key) {
