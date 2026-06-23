@@ -3191,28 +3191,49 @@ function sendCredentialsByEmail(reviewerKey) {
     return m ? `معيار ${m.num}: ${m.title}` : cn;
   });
 
-  const emailText =
-    `السلام عليكم ورحمة الله وبركاته\n\n` +
-    `الأستاذ/ة ${rv.name}،\n\n` +
-    `نُفيدكم بأنه تم تعيينكم مراجعاً في نظام متابعة أعمال الجودة بجامعة الجوف.\n` +
-    `يُرجى الاطلاع على بيانات دخولكم:\n\n` +
-    `الاسم           : ${rv.name}\n` +
-    `اسم المستخدم    : ${reviewerKey}\n` +
-    `كلمة المرور     : ${rv.pass}\n` +
-    `رابط النظام     : https://osamashahin.github.io/jouf-quality/\n\n` +
-    `المعايير المخصصة لكم:\n` +
-    critNames.map(c=>`- ${c}`).join('\n') +
-    `\n\nيُرجى تغيير كلمة المرور بعد أول دخول.\n\n` +
-    `مع تحيات\nعمادة التطوير والجودة - جامعة الجوف`;
+  // حفظ بيانات الإيميل في متغير عام للاستخدام من الأزرار
+  window._emailData = {
+    to: rv.email,
+    name: rv.name,
+    key: reviewerKey,
+    pass: rv.pass,
+    criteria: critNames,
+    text:
+      `السلام عليكم ورحمة الله وبركاته
 
-  // عرض داخل النظام مباشرة بدون نافذة منبثقة
+` +
+      `الأستاذ/ة ${rv.name}،
+
+` +
+      `نُفيدكم بأنه تم تعيينكم مراجعاً في نظام متابعة أعمال الجودة بجامعة الجوف.
+` +
+      `يُرجى الاطلاع على بيانات دخولكم:
+
+` +
+      `الاسم           : ${rv.name}
+` +
+      `اسم المستخدم    : ${reviewerKey}
+` +
+      `كلمة المرور     : ${rv.pass}
+` +
+      `رابط النظام     : https://osamashahin.github.io/jouf-quality/
+
+` +
+      `المعايير المخصصة لكم:
+` +
+      critNames.map(c=>'- '+c).join('\n') + '\n\nيُرجى تغيير كلمة المرور بعد أول دخول.\n\nمع تحيات\nعمادة التطوير والجودة - جامعة الجوف'
+  };
+
+  // إزالة أي overlay سابق
+  const prev = document.getElementById('email-overlay');
+  if (prev) prev.remove();
+
   const overlay = document.createElement('div');
   overlay.id = 'email-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
 
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-      <!-- Header -->
       <div style="background:#6b3fa0;padding:20px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="color:#fff;font-weight:700;font-size:15px;font-family:Cairo">📧 إيميل بيانات الدخول</div>
@@ -3220,8 +3241,6 @@ function sendCredentialsByEmail(reviewerKey) {
         </div>
         <button onclick="document.getElementById('email-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
-
-      <!-- Email preview -->
       <div style="background:#faf7fe;border:1px solid #e9d5ff;margin:16px;border-radius:10px;overflow:hidden">
         <div style="background:#6b3fa0;padding:18px;text-align:center">
           <div style="color:#fff;font-size:17px;font-weight:700;font-family:Cairo">🏛 جامعة الجوف</div>
@@ -3236,7 +3255,7 @@ function sendCredentialsByEmail(reviewerKey) {
             <tr style="background:#f3f0ff"><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo;border-bottom:1px solid #e9d5ff">الاسم</td><td style="padding:9px 12px;font-family:Cairo;border-bottom:1px solid #e9d5ff">${rv.name}</td></tr>
             <tr><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo;border-bottom:1px solid #e9d5ff">اسم المستخدم</td><td style="padding:9px 12px;font-family:monospace;border-bottom:1px solid #e9d5ff">${reviewerKey}</td></tr>
             <tr style="background:#f3f0ff"><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo;border-bottom:1px solid #e9d5ff">كلمة المرور</td><td style="padding:9px 12px;font-family:monospace;border-bottom:1px solid #e9d5ff">${rv.pass}</td></tr>
-            <tr><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo">رابط النظام</td><td style="padding:9px 12px"><a href="https://osamashahin.github.io/jouf-quality/" style="color:#6b3fa0;font-size:12px">https://osamashahin.github.io/jouf-quality/</a></td></tr>
+            <tr><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo">رابط النظام</td><td style="padding:9px 12px;font-size:11px"><a href="https://osamashahin.github.io/jouf-quality/" style="color:#6b3fa0">https://osamashahin.github.io/jouf-quality/</a></td></tr>
           </table>
           <div style="background:#f3f0ff;border-radius:8px;padding:12px;margin-bottom:12px">
             <div style="color:#6b3fa0;font-weight:700;font-size:12px;font-family:Cairo;margin-bottom:6px">📋 المعايير المخصصة:</div>
@@ -3250,34 +3269,38 @@ function sendCredentialsByEmail(reviewerKey) {
           <div style="color:#d4b8f0;font-size:12px;font-family:Cairo">عمادة التطوير والجودة — جامعة الجوف</div>
         </div>
       </div>
-
-      <!-- Action buttons -->
-      <div style="padding:0 16px 16px;display:flex;gap:8px;flex-wrap:wrap">
-        <button id="copy-email-btn" onclick="
-          navigator.clipboard.writeText(${JSON.stringify(emailText)}).then(()=>{
-            this.textContent='✅ تم النسخ!';this.style.background='#16a34a';
-            setTimeout(()=>{this.textContent='📋 نسخ النص';this.style.background='#374151';},2500);
-          }).catch(()=>{
-            const ta=document.createElement('textarea');ta.value=${JSON.stringify(emailText)};
-            ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);
-            ta.select();document.execCommand('copy');document.body.removeChild(ta);
-            this.textContent='✅ تم النسخ!';setTimeout(()=>this.textContent='📋 نسخ النص',2500);
-          })"
-          style="flex:1;padding:10px;background:#374151;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Cairo">
-          📋 نسخ النص
-        </button>
-        <button onclick="
-          const s=encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة');
-          const b=encodeURIComponent(${JSON.stringify(emailText)});
-          window.location.href='mailto:${rv.email}?subject='+s+'&body='+b;"
-          style="flex:1;padding:10px;background:#6b3fa0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Cairo">
-          📤 فتح البريد
-        </button>
+      <div style="padding:0 16px 16px;display:flex;gap:8px">
+        <button id="copy-email-btn" onclick="copyEmailFromOverlay()" style="flex:1;padding:11px;background:#374151;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Cairo">📋 نسخ النص</button>
+        <button onclick="openMailFromOverlay()" style="flex:1;padding:11px;background:#6b3fa0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Cairo">📤 فتح البريد</button>
       </div>
     </div>`;
 
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+}
+
+function copyEmailFromOverlay() {
+  const d = window._emailData; if(!d) return;
+  const btn = document.getElementById('copy-email-btn');
+  const doSuccess = () => { btn.textContent='✅ تم النسخ!'; btn.style.background='#16a34a'; setTimeout(()=>{btn.textContent='📋 نسخ النص';btn.style.background='#374151';},2500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(d.text).then(doSuccess).catch(()=>fallbackCopy(d.text, doSuccess));
+  } else { fallbackCopy(d.text, doSuccess); }
+}
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText='position:fixed;left:-9999px;top:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function openMailFromOverlay() {
+  const d = window._emailData; if(!d) return;
+  const sub = encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة - جامعة الجوف');
+  const body = encodeURIComponent(d.text);
+  window.location.href = 'mailto:' + d.to + '?subject=' + sub + '&body=' + body;
 }
 
 async function removeReviewer(key) {
