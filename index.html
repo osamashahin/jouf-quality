@@ -1265,6 +1265,12 @@ async function cDecideReq(itemId, idx, decision) {
   const it = ALL_ITEMS.find(i => i.id === itemId);
   if (!it) return;
   const rs = getReqStatus(it);
+  const decNow = new Date().toISOString();
+  const decHistory = rs[idx].history || [];
+  decHistory.push({type:decision==='completed'?'committee_complete':'committee_return',
+    label:decision==='completed'?'اعتماد':'إعادة للملاحظات',
+    note:decision==='returned'?note:'', date:decNow, by:CU.name||CU.id});
+  rs[idx].history = decHistory;
   rs[idx].status = decision;
   rs[idx].committee_note = decision === 'returned' ? note : '';
 
@@ -1344,6 +1350,80 @@ function render_c_track() {
 }
 window.render_c_track = render_c_track;
 
+
+// ═══════════════════════════════════════════
+//  عرض التسلسل الزمني الكامل للمتطلب
+// ═══════════════════════════════════════════
+function renderReqTimeline(r, reqText, idx) {
+  const history = r.history || [];
+  const status = r.status || 'pending';
+
+  // لون الحدود حسب الحالة
+  const borderColor = status==='completed'?'#16a34a':status==='returned'?'#dc2626':status==='under_review'?'#2563eb':'#e5e7eb';
+
+  let badge = '';
+  if(status==='pending')       badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+  else if(status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+  else if(status==='returned')     badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+  else if(status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
+
+  // بناء التسلسل الزمني
+  const timelineHtml = history.length ? `
+    <div style="margin-top:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase">📅 التسلسل الزمني</div>
+      ${history.map((ev, ei) => {
+        const isAgency = ev.type === 'agency_upload';
+        const isComplete = ev.type === 'committee_complete';
+        const isReturn = ev.type === 'committee_return';
+        const dotColor = isAgency?'#2563eb':isComplete?'#16a34a':'#dc2626';
+        const bgColor  = isAgency?'#eff6ff':isComplete?'#f0fdf4':'#fef2f2';
+        const bdColor  = isAgency?'#bfdbfe':isComplete?'#bbf7d0':'#fecaca';
+        return `
+          <div style="display:flex;gap:10px;margin-bottom:8px">
+            <div style="display:flex;flex-direction:column;align-items:center">
+              <div style="width:12px;height:12px;border-radius:50%;background:${dotColor};margin-top:3px;flex-shrink:0"></div>
+              ${ei<history.length-1?`<div style="width:2px;flex:1;background:#e5e7eb;margin:3px 0"></div>`:''}
+            </div>
+            <div style="flex:1;background:${bgColor};border:1px solid ${bdColor};border-radius:8px;padding:8px 12px;font-size:12px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <strong>${ev.label}</strong>
+                <span style="color:var(--mu);font-size:10px">${fmtDate(ev.date)} · ${ev.by||''}</span>
+              </div>
+              ${ev.file?`<div style="margin-top:4px">
+                <a href="${ev.file_url||'#'}" target="_blank" class="btn btn-g btn-sm"
+                   style="font-size:10.5px;${!ev.file_url?'opacity:0.5;pointer-events:none':''}">
+                   ⬇ ${ev.file}</a>
+              </div>`:''}
+              ${ev.note?`<div style="margin-top:4px;color:${isReturn?'#b91c1c':'#15803d'}">${ev.note}</div>`:''}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>` : '';
+
+  // الملف الحالي (إذا لم يكن في history بعد)
+  const currentFile = r.file && status !== 'pending' ? `
+    <div style="margin-top:8px">
+      <a href="${r.file_url||'#'}" target="_blank" class="btn btn-g btn-sm"
+         style="font-size:11px;${!r.file_url?'opacity:0.5;pointer-events:none':''}">
+         ⬇ الملف الحالي: ${r.file}
+         <span style="color:var(--mu);font-size:10px;margin-right:4px">${fmtDate(r.uploaded_at)}</span>
+      </a>
+    </div>` : '';
+
+  return `
+    <div style="border:1px solid var(--bd);border-right:4px solid ${borderColor};border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:700">📋 المتطلب ${idx+1}: ${reqText}</div>
+        ${badge}
+      </div>
+      ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
+      ${r.committee_note&&status==='returned'?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
+      ${r.reviewed_by?`<div style="font-size:10.5px;color:#065f46;margin-bottom:4px">👤 راجعه: ${r.reviewed_by}</div>`:''}
+      ${history.length ? timelineHtml : currentFile}
+      ${!history.length && !r.file && status==='pending'?'<div style="font-size:11px;color:var(--mu)">لم يُرفع ملف بعد</div>':''}
+    </div>`;
+}
+
 // ─── عرض تفاصيل إجراء واحد ───
 function cTrackDetail(itemId) {
   const it   = ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
@@ -1364,36 +1444,7 @@ function cTrackDetail(itemId) {
       ${it.committee_note?`<div class="notif ni">📝 ملاحظات الإرسال: ${it.committee_note}</div>`:''}
       ${reqs.map((reqText, idx) => {
         const r = rs[idx] || {status:'pending'};
-        let badge='';
-        if(r.status==='pending')       badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-        else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
-        else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
-
-        // جمع جميع الملفات (السابقة + الحالي)
-        const filesList = [];
-        (r.file_history||[]).forEach((fh,fi)=>{
-          filesList.push({file:fh.file, url:fh.file_url||'', date:fh.uploaded_at, label:`ملف ${fi+1} (سابق)`});
-        });
-        if(r.file) filesList.push({file:r.file, url:r.file_url||'', date:r.uploaded_at, label:r.status==='completed'?'الملف المعتمد ✅':'الملف الحالي'});
-
-        return `<div style="border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:8px;background:${r.status==='completed'?'#f0fdf4':r.status==='returned'?'#fef2f2':'#fff'}">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:700">📋 المتطلب ${idx+1}: ${reqText}</div>
-            ${badge}
-          </div>
-          ${r.uploaded_at?`<div style="font-size:10.5px;color:var(--mu);margin-bottom:6px">📅 تاريخ الرفع: ${fmtDate(r.uploaded_at)}</div>`:''}
-          ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
-          ${r.committee_note?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
-          ${r.reviewed_by?`<div style="font-size:10.5px;color:#065f46;margin-bottom:6px">👤 راجعه: ${r.reviewed_by}</div>`:''}
-          ${filesList.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${filesList.map(f=>`<a href="${f.url||'#'}" target="_blank"
-              class="btn btn-g btn-sm" style="font-size:11px;${!f.url?'opacity:0.5;pointer-events:none':''}">
-              ⬇ ${f.label}: ${f.file}
-              <span style="color:var(--mu);font-size:10px;margin-right:4px">${fmtDate(f.date)}</span>
-            </a>`).join('')}
-          </div>`:r.status!=='pending'?'':'<span style="font-size:11px;color:var(--mu)">لم يُرفع ملف بعد</span>'}
-        </div>`;
+        return renderReqTimeline(r, reqText, idx);
       }).join('')}
     </div>`;
 
@@ -2008,23 +2059,35 @@ async function agUploadReq(itemId, idx) {
     const fileUrl = await sbUploadFile(path, file);
 
     const rs = getReqStatus(it);
-    // احتفظ بتاريخ الملفات السابقة
-    const prevFile = rs[idx]?.file ? {
-      file: rs[idx].file,
-      file_url: rs[idx].file_url||'',
-      uploaded_at: rs[idx].uploaded_at||''
-    } : null;
+    const now = new Date().toISOString();
+    const agNote = noteEl ? noteEl.value.trim() : '';
+
+    // إضافة الحدث لسجل التتبع
+    const history = rs[idx]?.history || [];
+    history.push({
+      type: 'agency_upload',
+      label: 'رفع الجهة',
+      file: file.name,
+      file_url: fileUrl,
+      note: agNote,
+      date: now,
+      by: CU.name || CU.id
+    });
+
+    // حفظ الملف السابق في file_history
     const fileHistory = rs[idx]?.file_history || [];
-    if (prevFile) fileHistory.push(prevFile);
+    if (rs[idx]?.file) fileHistory.push({file:rs[idx].file, file_url:rs[idx].file_url||'', uploaded_at:rs[idx].uploaded_at||''});
 
     rs[idx] = {
       file: file.name,
       file_url: fileUrl,
-      uploaded_at: new Date().toISOString(),
-      agency_note: noteEl ? noteEl.value.trim() : '',
+      uploaded_at: now,
+      agency_note: agNote,
       committee_note: '',
       status: 'under_review',
-      file_history: fileHistory
+      file_history: fileHistory,
+      history: history,
+      reviewed_by: rs[idx]?.reviewed_by || ''
     };
 
     await sbPatch('procedures', itemId, {req_status: JSON.stringify(rs)});
@@ -2061,12 +2124,12 @@ function render_ag_track() {
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_ag_track();toast('تم التحديث')})">🔄</button></div>
     ${buildFilterBar('af-track','render_ag_track_filtered()')}
     <div class="card"><div class="tw"><table class="tbl">
-      <thead><tr><th>المحك</th><th>المتطلب</th><th>الحالة</th></tr></thead>
+      <thead><tr><th>المحك</th><th>المتطلب</th><th>الحالة</th><th>تفاصيل</th></tr></thead>
       <tbody id="af-track-body">
       ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => {
         const st = r.status || 'pending';
         let badge = '';
-        if      (st==='pending')      badge = '<span class="bdg bs">⬜ غير مكتمل</span>';
+        if      (st==='pending')      badge = '<span class="bdg bs">⬜ لم يُرفع</span>';
         else if (st==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
         else if (st==='returned')     badge = '<span class="bdg br">↩ معاد للملاحظات</span>';
         else if (st==='completed')    badge = '<span class="bdg ba">✅ مكتملة</span>';
@@ -2085,6 +2148,34 @@ function render_ag_track() {
   setTimeout(()=>showFilterCount('af-track',rows.length,rows.length),0);
 }
 window.render_ag_track = render_ag_track;
+
+function agShowTimeline(itemId, idx) {
+  const it = ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const reqs = getReqList(it), rs = getReqStatus(it);
+  const r = rs[idx] || {status:'pending'};
+  const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
+
+  // أظهر في div تحت الجدول
+  let detailDiv = document.getElementById('ag-track-detail');
+  if (!detailDiv) {
+    detailDiv = document.createElement('div');
+    detailDiv.id = 'ag-track-detail';
+    document.getElementById('ag-track').appendChild(detailDiv);
+  }
+  detailDiv.innerHTML = `
+    <div class="card" style="margin-top:14px;border-top:3px solid var(--p)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--pd)">${critLabel}</div>
+          <div style="font-size:12px;color:var(--mu)">${AGS[it.agency]?.icon||''} ${it.agency_name} · أُرسل: ${it.sent_at||'—'}</div>
+        </div>
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('ag-track-detail').innerHTML=''">✕ إغلاق</button>
+      </div>
+      ${it.committee_note?`<div class="notif ni">📝 ملاحظات العمادة: ${it.committee_note}</div>`:''}
+      ${renderReqTimeline(r, reqs[idx]||'—', idx)}
+    </div>`;
+  detailDiv.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
 
 function render_ag_track_filtered() {
   const allRows=[];
@@ -2107,8 +2198,9 @@ function render_ag_track_filtered() {
     return `<tr>
       <td style="font-weight:600;font-size:12px">${critLabel}</td>
       <td style="font-size:12px">${reqText}</td>
-      <td>${badge}</td></tr>
-      ${st==='returned'&&r.committee_note?`<tr><td colspan="3" style="font-size:11px;color:#b91c1c;padding-right:28px">↩ ملاحظة: ${r.committee_note}</td></tr>`:''}`;
+      <td>${badge}</td>
+      <td><button class="btn btn-g btn-sm" onclick="agShowTimeline('${it.id}',${idx})">📋 تفاصيل</button></td>
+    </tr>`;
   }).join(''):'<tr><td colspan="3" class="empty">لا توجد نتائج</td></tr>';
   showFilterCount('af-track',filtered.length,allRows.length);
 }
@@ -2343,7 +2435,13 @@ async function admDecideReq(itemId,idx,decision) {
   const note=(document.getElementById(`adm-note-${itemId}-${idx}`)?.value||'').trim();
   const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
   const rs=getReqStatus(it);
-  rs[idx].status=decision; rs[idx].committee_note=decision==='returned'?note:''; rs[idx].reviewed_by=CU.name;
+  const decNow = new Date().toISOString();
+  const decHistory = rs[idx].history || [];
+  decHistory.push({type:decision==='completed'?'committee_complete':'committee_return',
+    label:decision==='completed'?'اعتماد':'إعادة للملاحظات',
+    note:decision==='returned'?note:'', date:decNow, by:CU.name||CU.id});
+  rs[idx].history = decHistory;
+  rs[idx].status=decision; rs[idx].committee_note=decision==='returned'?note:''; rs[idx].reviewed_by=CU.name; rs[idx].history=decHistory;
   try {
     loading(true,'جاري حفظ القرار...');
     await sbPatch('procedures',itemId,{req_status:JSON.stringify(rs)});
@@ -3377,8 +3475,18 @@ async function rvDecide(itemId, idx, decision) {
   const note=(document.getElementById(`rvd-note-${itemId}-${idx}`)?.value||'').trim();
   const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
   const rs=getReqStatus(it);
+  const now = new Date().toISOString();
+  const history = rs[idx].history || [];
+  history.push({
+    type: decision === 'completed' ? 'committee_complete' : 'committee_return',
+    label: decision === 'completed' ? 'اعتماد العمادة' : 'إعادة للملاحظات',
+    note: decision === 'returned' ? note : '',
+    date: now,
+    by: CU.name || CU.id
+  });
   rs[idx].status=decision;
   rs[idx].committee_note=decision==='returned'?note:'';
+  rs[idx].history=history;
   rs[idx].reviewed_by=CU.name;
   try {
     loading(true,'جاري حفظ القرار...');
