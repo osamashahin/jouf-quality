@@ -1324,67 +1324,174 @@ async function cDecideReq(itemId, idx, decision) {
 
 // ─── متابعة الإجراءات: التاريخ الكامل لكل متطلب ───
 function render_c_track() {
+  // بناء صفوف الجدول — كل إجراء (محك) في سطر واحد
   const rows = [];
   ALL_ITEMS.forEach(it => {
-    const reqs = getReqList(it);
-    const rs   = getReqStatus(it);
+    const reqs   = getReqList(it);
+    const rs     = getReqStatus(it);
     const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
-    reqs.forEach((reqText, idx) => {
-      const r = rs[idx] || {status:'pending'};
-      rows.push({it, idx, reqText, r, critLabel});
+    // إحصاء حالات متطلبات هذا الإجراء
+    let p=0,u=0,r=0,c=0;
+    rs.forEach(x => {
+      if(x.status==='pending')       p++;
+      else if(x.status==='under_review') u++;
+      else if(x.status==='returned')     r++;
+      else if(x.status==='completed')    c++;
     });
+    const total = reqs.length;
+    const overallStatus = c===total&&total>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+    rows.push({it, reqs, rs, critLabel, p, u, r, c, total, overallStatus});
   });
 
   document.getElementById('c-track').innerHTML = `
-    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>التاريخ الكامل لكل متطلب مع إمكانية تحميل جميع الملفات</p></div>
+    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1><p>تتبع كامل لكل إجراء ومتطلباته</p></div>
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_c_track();toast('تم التحديث')})">🔄</button></div>
     ${buildFilterBar('cf-track','render_c_track_filtered()')}
-    <div id="cf-track-body">
-    ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => {
-      let badge='';
-      if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-      else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-      else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
-      else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
-      const reviewerTag = r.reviewed_by ? `<span style="font-size:10px;color:#065f46">👤 ${r.reviewed_by}</span>` : '';
-
-      // جمع جميع الملفات المرفوعة (الحالي + تاريخي)
-      const allFiles = (r.file_history || []);
-      if (r.file) {
-        // الملف الحالي
-        allFiles;
-      }
-      const filesList = [];
-      if (r.file_history && r.file_history.length) {
-        r.file_history.forEach((fh, fi) => {
-          filesList.push({file: fh.file, url: fh.file_url, date: fh.uploaded_at, label: `ملف ${fi+1} (سابق)`});
-        });
-      }
-      if (r.file) filesList.push({file: r.file, url: r.file_url, date: r.uploaded_at, label: r.status==='completed'?'الملف المعتمد':'الملف الحالي'});
-
-      return `<div class="ic" style="margin-bottom:8px;border-right:4px solid ${r.status==='completed'?'var(--ok)':r.status==='returned'?'var(--er)':r.status==='under_review'?'#2563eb':'var(--bd)'}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-          <div>
-            <div style="font-size:12px;color:var(--mu)">${it.crit_title||''}</div>
-            <div style="font-size:12px;font-weight:700;color:var(--pd)">${critLabel}</div>
-            <div style="font-size:13px;font-weight:700;margin:2px 0">${reqText}</div>
-            <div style="font-size:11px;color:var(--mu)">${AGS[it.agency]?.icon||''} ${it.agency_name} · أُرسل: ${it.sent_at||'—'}</div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${badge}${reviewerTag}</div>
-        </div>
-        ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
-        ${r.committee_note?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
-        ${filesList.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
-          ${filesList.map(f=>`<a href="${f.url||'#'}" target="_blank" class="btn btn-g btn-sm" style="font-size:11px;${!f.url?'opacity:0.5;pointer-events:none':''}">
-            ⬇ ${f.label}: ${f.file} <span style="color:var(--mu);font-size:10px">${fmtDate(f.date)}</span>
-          </a>`).join('')}
-        </div>`:''}
-      </div>`;
-    }).join('') : '<div class="card"><div class="empty">لا توجد إجراءات بعد</div></div>'}
-    </div>`;
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr>
+        <th>المعيار الفرعي</th>
+        <th>المحك</th>
+        <th>الجهة</th>
+        <th>تاريخ الإرسال</th>
+        <th>المتطلبات</th>
+        <th>الحالة العامة</th>
+        <th>عرض</th>
+      </tr></thead>
+      <tbody id="cf-track-body">
+      ${rows.length ? rows.map(({it,reqs,rs,critLabel,p,u,r,c,total,overallStatus})=>{
+        let badge='';
+        if(overallStatus==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
+        else if(overallStatus==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if(overallStatus==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+        else                                    badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+        return `<tr>
+          <td style="font-size:11px">${it.crit_title||'—'}</td>
+          <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
+          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+          <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+          <td style="font-size:11px">
+            <span title="مكتمل" class="bdg ba" style="font-size:10px">✅ ${c}</span>
+            <span title="مراجعة" class="bdg bu" style="font-size:10px">🔵 ${u}</span>
+            <span title="معاد" class="bdg br" style="font-size:10px">↩ ${r}</span>
+            <span title="لم يُرفع" class="bdg bs" style="font-size:10px">⬜ ${p}</span>
+          </td>
+          <td>${badge}</td>
+          <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="7" class="empty">لا توجد إجراءات بعد</td></tr>'}
+      </tbody>
+    </table></div></div>
+    <div id="c-track-detail"></div>`;
   setTimeout(()=>showFilterCount('cf-track', rows.length, rows.length), 0);
 }
 window.render_c_track = render_c_track;
+
+// ─── عرض تفاصيل إجراء واحد ───
+function cTrackDetail(itemId) {
+  const it   = ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const reqs = getReqList(it);
+  const rs   = getReqStatus(it);
+  const critLabel = it.inst_crit_num ? `${it.inst_crit_num} — ${it.inst_crit_title}` : it.proc;
+
+  const html = `
+    <div class="card" style="margin-top:14px;border-top:3px solid var(--p)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <div style="font-size:11px;color:var(--mu)">${it.crit_title||''}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--pd)">${critLabel}</div>
+          <div style="font-size:12px;color:var(--mu);margin-top:2px">${AGS[it.agency]?.icon||''} ${it.agency_name} · أُرسل: ${it.sent_at||'—'}</div>
+        </div>
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('c-track-detail').innerHTML=''">✕ إغلاق</button>
+      </div>
+      ${it.committee_note?`<div class="notif ni">📝 ملاحظات الإرسال: ${it.committee_note}</div>`:''}
+      ${reqs.map((reqText, idx) => {
+        const r = rs[idx] || {status:'pending'};
+        let badge='';
+        if(r.status==='pending')       badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+        else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+        else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
+
+        // جمع جميع الملفات (السابقة + الحالي)
+        const filesList = [];
+        (r.file_history||[]).forEach((fh,fi)=>{
+          filesList.push({file:fh.file, url:fh.file_url||'', date:fh.uploaded_at, label:`ملف ${fi+1} (سابق)`});
+        });
+        if(r.file) filesList.push({file:r.file, url:r.file_url||'', date:r.uploaded_at, label:r.status==='completed'?'الملف المعتمد ✅':'الملف الحالي'});
+
+        return `<div style="border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:8px;background:${r.status==='completed'?'#f0fdf4':r.status==='returned'?'#fef2f2':'#fff'}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:700">📋 المتطلب ${idx+1}: ${reqText}</div>
+            ${badge}
+          </div>
+          ${r.uploaded_at?`<div style="font-size:10.5px;color:var(--mu);margin-bottom:6px">📅 تاريخ الرفع: ${fmtDate(r.uploaded_at)}</div>`:''}
+          ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong> ${r.agency_note}</div>`:''}
+          ${r.committee_note?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:11.5px;margin-bottom:6px"><strong style="color:#b91c1c">↩ ملاحظة العمادة:</strong> ${r.committee_note}</div>`:''}
+          ${r.reviewed_by?`<div style="font-size:10.5px;color:#065f46;margin-bottom:6px">👤 راجعه: ${r.reviewed_by}</div>`:''}
+          ${filesList.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${filesList.map(f=>`<a href="${f.url||'#'}" target="_blank"
+              class="btn btn-g btn-sm" style="font-size:11px;${!f.url?'opacity:0.5;pointer-events:none':''}">
+              ⬇ ${f.label}: ${f.file}
+              <span style="color:var(--mu);font-size:10px;margin-right:4px">${fmtDate(f.date)}</span>
+            </a>`).join('')}
+          </div>`:r.status!=='pending'?'':'<span style="font-size:11px;color:var(--mu)">لم يُرفع ملف بعد</span>'}
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  document.getElementById('c-track-detail').innerHTML = html;
+  document.getElementById('c-track-detail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function render_c_track_filtered() {
+  const allRows = [];
+  ALL_ITEMS.forEach(it => {
+    const reqs=getReqList(it), rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    let p=0,u=0,r=0,c=0;
+    rs.forEach(x=>{
+      if(x.status==='pending')p++;
+      else if(x.status==='under_review')u++;
+      else if(x.status==='returned')r++;
+      else if(x.status==='completed')c++;
+    });
+    const total=reqs.length;
+    const overallStatus=c===total&&total>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+    reqs.forEach((reqText,idx)=>{const rx=rs[idx]||{status:'pending'};
+      allRows.push({it,idx,reqText,r:rx,critLabel});});
+  });
+  const filtered = [...new Set(applyFilters(allRows,'cf-track').map(x=>x.it.id))].map(id=>ALL_ITEMS.find(i=>i.id===id));
+  const tbody = document.getElementById('cf-track-body');
+  if(!tbody) return;
+  tbody.innerHTML = filtered.length ? filtered.map(it=>{
+    const reqs=getReqList(it),rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    let p=0,u=0,r=0,c=0;
+    rs.forEach(x=>{if(x.status==='pending')p++;else if(x.status==='under_review')u++;else if(x.status==='returned')r++;else if(x.status==='completed')c++;});
+    const overallStatus=c===reqs.length&&reqs.length>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+    let badge='';
+    if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
+    else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد</span>';
+    else badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+    return `<tr>
+      <td style="font-size:11px">${it.crit_title||'—'}</td>
+      <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
+      <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+      <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+      <td style="font-size:11px">
+        <span class="bdg ba" style="font-size:10px">✅ ${c}</span>
+        <span class="bdg bu" style="font-size:10px">🔵 ${u}</span>
+        <span class="bdg br" style="font-size:10px">↩ ${r}</span>
+        <span class="bdg bs" style="font-size:10px">⬜ ${p}</span>
+      </td>
+      <td>${badge}</td>
+      <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" class="empty">لا توجد نتائج</td></tr>';
+  showFilterCount('cf-track', filtered.length, allRows.length);
+}
+
 
 function render_c_track_filtered() {
   const allRows = [];
