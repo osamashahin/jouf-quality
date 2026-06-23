@@ -456,7 +456,7 @@ function updateBadges() {
   const bn = document.getElementById('bdg-n');
   if (bw) bw.textContent = ALL_ITEMS.filter(i=>i.status==='pending').length;
   if (ba) {
-    // عدد المتطلبات تحت المراجعة (لجميع الجهات) لإشعار العمادة
+    // عدد المتطلبات قيد المراجعة (لجميع الجهات) لإشعار العمادة
     let cnt = 0;
     ALL_ITEMS.forEach(it => getReqStatus(it).forEach(r => { if(r.status==='under_review') cnt++; }));
     ba.textContent = cnt;
@@ -786,7 +786,7 @@ function render_c_home() {
 
   const reqDonutData = [
     {v:completedR, c:'#16a34a', l:'مكتمل'},
-    {v:underR,     c:'#2563eb', l:'تحت المراجعة'},
+    {v:underR,     c:'#2563eb', l:'قيد المراجعة'},
     {v:returnedR,  c:'#dc2626', l:'معاد للملاحظات'},
     {v:pendingR,   c:'#d1d5db', l:'قيد الاستكمال'},
   ];
@@ -799,9 +799,9 @@ function render_c_home() {
     <!-- إحصائيات سريعة -->
     <div class="sr">
       <div class="sc" style="border-top:3px solid #6b3fa0"><div class="ico">📤</div><div class="num">${ALL_ITEMS.length}</div><div class="lbl">إجراءات مُرسلة</div></div>
-      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">قيد المراجعة</div></div>
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completedR}</div><div class="lbl">متطلبات مكتملة</div></div>
-      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingR}</div><div class="lbl">لم تُرفع بعد</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingR}</div><div class="lbl">قيد الاستكمال</div></div>
     </div>
 
     <!-- Donut Chart + أفضلية المتطلبات -->
@@ -847,7 +847,7 @@ function render_c_home() {
           <th>الجهة</th>
           <th>الإجمالي</th>
           <th>لم يُرفع</th>
-          <th>تحت المراجعة</th>
+          <th>قيد المراجعة</th>
           <th>معاد</th>
           <th>مكتمل</th>
           <th>نسبة الإنجاز</th>
@@ -1162,7 +1162,7 @@ function render_c_appr() {
     });
   });
 
-  // عدد "تحت المراجعة" للشارة
+  // عدد "قيد المراجعة" للشارة
   const underReviewCount = rows.filter(x => x.r.status === 'under_review').length;
   const ba = document.getElementById('bdg-a');
   if (ba) ba.textContent = underReviewCount;
@@ -1180,8 +1180,8 @@ function render_c_appr() {
       <tbody id="cf-appr-body">
       ${allRows.length ? allRows.map(({it, idx, reqText, r}) => {
         let badge = '';
-        if      (r.status==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد</span>';
+        if      (r.status==='under_review') badge = '<span class="bdg bu">🔵 قيد المراجعة</span>';
+        else if (r.status==='returned')     badge = '<span class="bdg br">↩ معاد للملاحظات</span>';
         else if (r.status==='completed')    badge = '<span class="bdg ba">✅ مكتمل</span>';
         return `<tr style="${r.status==='under_review'?'background:#eff6ff':''}${r.status==='completed'?'background:#f0fdf4':''}">
           <td style="font-size:11px">${it.crit_title||'—'}</td>
@@ -1214,8 +1214,8 @@ function render_c_appr_filtered() {
   if (!tbody) return;
   tbody.innerHTML = filtered.length ? filtered.map(({it,idx,reqText,r})=>{
     let badge='';
-    if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
+    if(r.status==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد للملاحظات</span>';
     else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
     return `<tr style="${r.status==='under_review'?'background:#eff6ff':''}">
       <td style="font-size:11px">${it.crit_title||'—'}</td>
@@ -1352,9 +1352,9 @@ function render_c_track() {
       ${rows.length ? rows.map(({it,reqs,rs,critLabel,p,u,r,c,total,overallStatus})=>{
         let badge='';
         if(overallStatus==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
-        else if(overallStatus==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if(overallStatus==='returned')     badge='<span class="bdg br">↩ معاد</span>';
-        else                                    badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+        else if(overallStatus==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+        else if(overallStatus==='returned')     badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+        else                                    badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
         return `<tr>
           <td style="font-size:11px">${it.crit_title||'—'}</td>
           <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
@@ -1390,8 +1390,8 @@ function renderReqTimeline(r, reqText, idx) {
   const borderColor = status==='completed'?'#16a34a':status==='returned'?'#dc2626':status==='under_review'?'#2563eb':'#e5e7eb';
 
   let badge = '';
-  if(status==='pending')       badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-  else if(status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+  if(status==='pending')       badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+  else if(status==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
   else if(status==='returned')     badge='<span class="bdg br">↩ معاد للملاحظات</span>';
   else if(status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
 
@@ -1744,9 +1744,9 @@ function render_c_track_filtered() {
     const overallStatus=c===reqs.length&&reqs.length>0?'completed':u>0?'under_review':r>0?'returned':'pending';
     let badge='';
     if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
-    else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-    else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد</span>';
-    else badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+    else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+    else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+    else badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
     return `<tr>
       <td style="font-size:11px">${it.crit_title||'—'}</td>
       <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
@@ -1953,9 +1953,9 @@ function render_c_track_filtered() {
 
   body.innerHTML = filtered.map(({it, idx, reqText, r, critLabel}) => {
     let badge='';
-    if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-    else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+    if(r.status==='pending')      badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+    else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد للملاحظات</span>';
     else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
     const reviewerTag = r.reviewed_by?`<span style="font-size:10px;color:#065f46">👤 ${r.reviewed_by}</span>`:'';
     const filesList = [];
@@ -2164,9 +2164,9 @@ function render_c_track_filtered() {
   if (!tbody) return;
   tbody.innerHTML = filtered.length ? filtered.map(({it,idx,reqText,r})=>{
     let badge='';
-    if(r.status==='pending') badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
+    if(r.status==='pending') badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد للملاحظات</span>';
     else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
     const reviewerTag=r.reviewed_by?`<span style="font-size:10px;color:#065f46;display:block">👤 ${r.reviewed_by}</span>`:'';
     return `<tr>
@@ -2386,7 +2386,7 @@ function render_ag_home() {
 
   const reqData = [
     {v:completedR, c:'#16a34a', l:'مكتمل'},
-    {v:underR,     c:'#2563eb', l:'تحت المراجعة'},
+    {v:underR,     c:'#2563eb', l:'قيد المراجعة'},
     {v:returnedR,  c:'#dc2626', l:'معاد للملاحظات'},
     {v:pendingR,   c:'#d1d5db', l:'قيد الاستكمال'},
   ];
@@ -2398,7 +2398,7 @@ function render_ag_home() {
     <!-- إحصائيات سريعة -->
     <div class="sr">
       <div class="sc" style="border-top:3px solid #dc2626"><div class="ico">📬</div><div class="num">${pendingR+returnedR}</div><div class="lbl">تتطلب رفع</div></div>
-      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">قيد المراجعة</div></div>
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completedR}</div><div class="lbl">مكتمل</div></div>
       <div class="sc" style="border-top:3px solid #b45309"><div class="ico">↩</div><div class="num">${returnedR}</div><div class="lbl">معاد للملاحظات</div></div>
     </div>
@@ -2499,7 +2499,7 @@ function instReqsHtml(it) {
   </div>`;
 }
 
-// ─── الإجراءات الواردة: إجراءات لديها متطلبات لم تُرفع بعد أو أُعيدت للملاحظات ───
+// ─── الإجراءات الواردة: إجراءات لديها متطلبات قيد الاستكمال أو أُعيدت للملاحظات ───
 function render_ag_inbox() {
   // سطر لكل متطلب (pending أو returned فقط)
   const rows = [];
@@ -2735,8 +2735,8 @@ function render_ag_track() {
       ${rows.length ? rows.map(({it, idx, reqText, r, critLabel}) => {
         const st = r.status || 'pending';
         let badge = '';
-        if      (st==='pending')      badge = '<span class="bdg bs">⬜ لم يُرفع</span>';
-        else if (st==='under_review') badge = '<span class="bdg bu">🔵 تحت المراجعة</span>';
+        if      (st==='pending')      badge = '<span class="bdg bs">⬜ قيد الاستكمال</span>';
+        else if (st==='under_review') badge = '<span class="bdg bu">🔵 قيد المراجعة</span>';
         else if (st==='returned')     badge = '<span class="bdg br">↩ معاد للملاحظات</span>';
         else if (st==='completed')    badge = '<span class="bdg ba">✅ مكتملة</span>';
         return `
@@ -2798,7 +2798,7 @@ function render_ag_track_filtered() {
     let badge='';
     const st=r.status||'pending';
     if(st==='pending') badge='<span class="bdg bs">⬜ غير مكتمل</span>';
-    else if(st==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+    else if(st==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
     else if(st==='returned') badge='<span class="bdg br">↩ معاد للملاحظات</span>';
     else if(st==='completed') badge='<span class="bdg ba">✅ مكتملة</span>';
     return `<tr>
@@ -2941,7 +2941,7 @@ function render_adm_home()   {
     slices.push(`<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="9" fill="#6b7280" font-family="Cairo">${ml.l}</text>`);
     return `<svg width="${size}" height="${size}" viewBox="0 0 130 130">${slices.join('')}</svg>`;
   }
-  const reqData=[{v:completed,c:'#16a34a',l:'مكتمل'},{v:underReview,c:'#2563eb',l:'تحت المراجعة'},{v:returned,c:'#dc2626',l:'معاد للملاحظات'},{v:pendingReqs,c:'#d1d5db',l:'قيد الاستكمال'}];
+  const reqData=[{v:completed,c:'#16a34a',l:'مكتمل'},{v:underReview,c:'#2563eb',l:'قيد المراجعة'},{v:returned,c:'#dc2626',l:'معاد للملاحظات'},{v:pendingReqs,c:'#d1d5db',l:'قيد الاستكمال'}];
   const totalReqs=pendingReqs+underReview+returned+completed;
 
   document.getElementById('adm-home').innerHTML=`
@@ -2949,7 +2949,7 @@ function render_adm_home()   {
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_home();toast('تم التحديث')})">🔄</button></div>
     <div class="sr">
       <div class="sc" style="border-top:3px solid #374151"><div class="ico">📤</div><div class="num">${t}</div><div class="lbl">إجراءات مُرسلة</div></div>
-      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">قيد المراجعة</div></div>
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
       <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingReqs}</div><div class="lbl">لم يُرفع</div></div>
     </div>
@@ -2995,8 +2995,8 @@ function render_adm_appr() {
       <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>الحالة</th><th>اطلاع</th></tr></thead>
       <tbody>${rows.length?rows.map(({it,idx,reqText,r})=>{
         let badge='';
-        if(r.status==='under_review')badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if(r.status==='returned')badge='<span class="bdg br">↩ معاد</span>';
+        if(r.status==='under_review')badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+        else if(r.status==='returned')badge='<span class="bdg br">↩ معاد للملاحظات</span>';
         else if(r.status==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
         return `<tr style="${r.status==='under_review'?'background:#eff6ff':''}">
           <td style="font-size:11px">${it.inst_crit_num} — ${it.inst_crit_title}</td>
@@ -3077,9 +3077,9 @@ function render_adm_track() {
       <tbody>${rows.length?rows.map(({it,critLabel,p,u,r,c,total,overallStatus})=>{
         let badge='';
         if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
-        else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد</span>';
-        else badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+        else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+        else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد للملاحظات</span>';
+        else badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
         return `<tr><td style="font-size:11px">${it.crit_title||'—'}</td>
           <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
           <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
@@ -3954,8 +3954,8 @@ function render_rv_home() {
     </div></div>
     <div class="sr">
       <div class="sc" style="border-top:3px solid #065f46"><div class="ico">📤</div><div class="num">${items.length}</div><div class="lbl">إجمالي الإجراءات</div></div>
-      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pending}</div><div class="lbl">لم يُرفع بعد</div></div>
-      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pending}</div><div class="lbl">قيد الاستكمال</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">قيد المراجعة</div></div>
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
     </div>
 `;
@@ -4112,9 +4112,9 @@ function render_rv_appr() {
         <td style="font-size:11px;font-weight:600">${it.proc}</td>
         <td style="font-size:12px">${reqText}</td>
         <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
-        <td><span class="bdg bu">🔵 تحت المراجعة</span></td>
+        <td><span class="bdg bu">🔵 قيد المراجعة</span></td>
         <td><button class="btn btn-p btn-sm" onclick="rvOpenDetail('${it.id}',${idx})">اطلاع</button></td>
-      </tr>`).join(''):'<tr><td colspan="6" class="empty">لا توجد متطلبات تحت المراجعة</td></tr>'}
+      </tr>`).join(''):'<tr><td colspan="6" class="empty">لا توجد متطلبات قيد المراجعة</td></tr>'}
       </tbody></table></div></div>`;
   setTimeout(()=>showFilterCount('rf-appr', rows.length, rows.length),0);
 }
@@ -4136,7 +4136,7 @@ function render_rv_appr_filtered() {
     <td style="font-size:11px;font-weight:600">${it.proc}</td>
     <td style="font-size:12px">${reqText}</td>
     <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
-    <td><span class="bdg bu">🔵 تحت المراجعة</span></td>
+    <td><span class="bdg bu">🔵 قيد المراجعة</span></td>
     <td><button class="btn btn-p btn-sm" onclick="rvOpenDetail('${it.id}',${idx})">اطلاع</button></td>
   </tr>`).join(''):'<tr><td colspan="6" class="empty">لا توجد نتائج</td></tr>';
   showFilterCount('rf-appr',filtered.length,allRows.length);
@@ -4219,9 +4219,9 @@ function render_rv_track() {
       <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>تاريخ الإرسال</th><th>الحالة</th><th>عرض</th></tr></thead>
       <tbody id="rf-track-body">${rows.length?rows.map(({it,idx,reqText,r,critLabel})=>{
         let badge='';
-        if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-        else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-        else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد</span>';
+        if(r.status==='pending')      badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+        else if(r.status==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+        else if(r.status==='returned')     badge='<span class="bdg br">↩ معاد للملاحظات</span>';
         else if(r.status==='completed')    badge='<span class="bdg ba">✅ مكتمل</span>';
         return `<tr>
           <td style="font-size:11px">${critLabel}</td>
@@ -4251,9 +4251,9 @@ function render_rv_track_filtered() {
   if(!tbody) return;
   tbody.innerHTML=filtered.length?filtered.map(({it,idx,reqText,r,critLabel})=>{
     let badge='';
-    if(r.status==='pending') badge='<span class="bdg bs">⬜ لم يُرفع</span>';
-    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
-    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
+    if(r.status==='pending') badge='<span class="bdg bs">⬜ قيد الاستكمال</span>';
+    else if(r.status==='under_review') badge='<span class="bdg bu">🔵 قيد المراجعة</span>';
+    else if(r.status==='returned') badge='<span class="bdg br">↩ معاد للملاحظات</span>';
     else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
     return `<tr>
       <td style="font-size:11px">${critLabel}</td>
