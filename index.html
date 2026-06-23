@@ -3191,131 +3191,93 @@ function sendCredentialsByEmail(reviewerKey) {
     return m ? `معيار ${m.num}: ${m.title}` : cn;
   });
 
-  const html = `<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head><meta charset="UTF-8"><title>بيانات الدخول</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:Arial,sans-serif;background:#f3f4f6;direction:rtl;padding:30px}
-  .wrap{max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10)}
-  .hdr{background:#6b3fa0;padding:26px 24px;text-align:center}
-  .hdr h1{color:#fff;font-size:20px;margin-bottom:4px}
-  .hdr p{color:#d4b8f0;font-size:13px}
-  .body{padding:26px 24px}
-  .greet{font-size:14px;color:#333;line-height:1.8;margin-bottom:20px}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px}
-  td{padding:11px 14px;font-size:13px;border-bottom:1px solid #ede9f5}
-  td:first-child{color:#6b3fa0;font-weight:700;width:40%;background:#faf7fe}
-  .crit-box{background:#faf7fe;border-radius:8px;padding:14px;margin-bottom:16px}
-  .crit-box h3{color:#6b3fa0;font-size:13px;margin-bottom:8px}
-  .crit-box li{font-size:12px;color:#444;line-height:2;margin-right:14px}
-  .note{background:#fffbeb;border-right:4px solid #f59e0b;padding:10px 14px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:16px}
-  .ftr{background:#6b3fa0;padding:16px 24px;text-align:center}
-  .ftr p{color:#d4b8f0;font-size:12px;line-height:1.8}
-  .btn-send{display:block;width:100%;padding:12px;background:#6b3fa0;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:Arial;margin-top:8px;text-align:center}
-  .toolbar{background:#1f2937;padding:12px 20px;display:flex;align-items:center;gap:10px;border-radius:8px 8px 0 0}
-  .toolbar span{color:#fff;font-size:13px;flex:1}
-  .tbtn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700}
-</style>
-</head>
-<body>
-<div class="toolbar">
-  <span>📧 معاينة الإيميل — ${rv.name}</span>
-  <button class="tbtn" style="background:#16a34a;color:#fff" onclick="copyEmailText()" id="copybtn">📋 نسخ النص</button>
-  <button class="tbtn" style="background:#6b3fa0;color:#fff" onclick="sendEmail()">📧 Gmail</button>
-  <button class="tbtn" style="background:#374151;color:#fff" onclick="window.print()">🖨 طباعة</button>
-</div>
-<div class="wrap">
-  <div class="hdr">
-    <h1>🏛 جامعة الجوف</h1>
-    <p>عمادة التطوير والجودة</p>
-  </div>
-  <div class="body">
-    <p class="greet">
-      تحية طيبة،<br><br>
-      الأستاذ/ة <strong>${rv.name}</strong>،<br><br>
-      نُفيدكم بأنه تم تعيينكم مراجعاً في <strong>نظام متابعة أعمال الجودة</strong>
-      بجامعة الجوف. يُرجى الاطلاع على بيانات دخولكم:
-    </p>
-    <table>
-      <tr><td>الاسم</td><td>${rv.name}</td></tr>
-      <tr><td>اسم المستخدم</td><td>${reviewerKey}</td></tr>
-      <tr><td>كلمة المرور</td><td>${rv.pass}</td></tr>
-      <tr><td>رابط النظام</td><td><a href="https://osamashahin.github.io/jouf-quality/" style="color:#6b3fa0">اضغط هنا للدخول</a></td></tr>
-    </table>
-    <div class="crit-box">
-      <h3>📋 المعايير المخصصة لكم:</h3>
-      <ul>${critNames.map(c=>`<li>${c}</li>`).join('')}</ul>
-    </div>
-    <div class="note">
-      ⚠️ يُرجى تغيير كلمة المرور فور أول دخول من شاشة "بياناتي وكلمة المرور".
-    </div>
-    <p style="font-size:12px;color:#888;line-height:1.8">
-      يُرجى التواصل مع عمادة التطوير والجودة عند أي استفسار.
-    </p>
-  </div>
-  <div class="ftr">
-    <p>عمادة التطوير والجودة<br>جامعة الجوف</p>
-  </div>
-</div>
-<script>
-function copyEmailText() {
-  const text =
-    'السلام عليكم ورحمة الله وبركاته\n\n' +
-    'الأستاذ/ة ${rv.name}،\n\n' +
-    'نُفيدكم بأنه تم تعيينكم مراجعاً في نظام متابعة أعمال الجودة بجامعة الجوف.\n' +
-    'يُرجى الاطلاع على بيانات دخولكم:\n\n' +
-    'الاسم           : ${rv.name}\n' +
-    'اسم المستخدم    : ${reviewerKey}\n' +
-    'كلمة المرور     : ${rv.pass}\n' +
-    'رابط النظام     : https://osamashahin.github.io/jouf-quality/\n\n' +
-    'المعايير المخصصة لكم:\n' +
-    '${critNames.map(c=>"- "+c).join("\n")}\n\n' +
-    'يُرجى تغيير كلمة المرور بعد أول دخول من شاشة "بياناتي وكلمة المرور".\n\n' +
-    'مع تحيات\n' +
-    'عمادة التطوير والجودة - جامعة الجوف';
+  const emailText =
+    `السلام عليكم ورحمة الله وبركاته\n\n` +
+    `الأستاذ/ة ${rv.name}،\n\n` +
+    `نُفيدكم بأنه تم تعيينكم مراجعاً في نظام متابعة أعمال الجودة بجامعة الجوف.\n` +
+    `يُرجى الاطلاع على بيانات دخولكم:\n\n` +
+    `الاسم           : ${rv.name}\n` +
+    `اسم المستخدم    : ${reviewerKey}\n` +
+    `كلمة المرور     : ${rv.pass}\n` +
+    `رابط النظام     : https://osamashahin.github.io/jouf-quality/\n\n` +
+    `المعايير المخصصة لكم:\n` +
+    critNames.map(c=>`- ${c}`).join('\n') +
+    `\n\nيُرجى تغيير كلمة المرور بعد أول دخول.\n\n` +
+    `مع تحيات\nعمادة التطوير والجودة - جامعة الجوف`;
 
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById('copybtn');
-    btn.textContent = '✅ تم النسخ!';
-    btn.style.background = '#15803d';
-    setTimeout(() => { btn.textContent = '📋 نسخ النص'; btn.style.background = '#16a34a'; }, 2500);
-  }).catch(() => {
-    // fallback
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    const btn = document.getElementById('copybtn');
-    btn.textContent = '✅ تم النسخ!';
-    setTimeout(() => btn.textContent = '📋 نسخ النص', 2500);
-  });
-}
+  // عرض داخل النظام مباشرة بدون نافذة منبثقة
+  const overlay = document.createElement('div');
+  overlay.id = 'email-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
 
-function sendEmail() {
-  const to      = '${rv.email}';
-  const subject = encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة - جامعة الجوف');
-  const body    = encodeURIComponent(
-    'السلام عليكم\n\nالاستاذ/ة ${rv.name}\n\n' +
-    'الاسم: ${rv.name}\n' +
-    'اسم المستخدم: ${reviewerKey}\n' +
-    'كلمة المرور: ${rv.pass}\n' +
-    'رابط النظام: https://osamashahin.github.io/jouf-quality/\n\n' +
-    'المعايير المخصصة:\n${critNames.map(c=>'- '+c).join('\\n')}\n\n' +
-    'مع تحيات عمادة التطوير والجودة - جامعة الجوف'
-  );
-  // فتح Gmail في المتصفح مباشرة
-  const gmailUrl = 'https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(to) + '&su=' + subject + '&body=' + body;
-  window.open(gmailUrl, '_blank');
-}
-<\/script>
-</body></html>`;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <!-- Header -->
+      <div style="background:#6b3fa0;padding:20px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="color:#fff;font-weight:700;font-size:15px;font-family:Cairo">📧 إيميل بيانات الدخول</div>
+          <div style="color:#d4b8f0;font-size:12px;font-family:Cairo">إلى: ${rv.email}</div>
+        </div>
+        <button onclick="document.getElementById('email-overlay').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+      </div>
 
-  const win = window.open('', '_blank', 'width=620,height=750,scrollbars=yes');
-  win.document.write(html);
-  win.document.close();
-  toast('✓ تم فتح معاينة الإيميل — اضغط "فتح تطبيق البريد وإرسال"', true);
+      <!-- Email preview -->
+      <div style="background:#faf7fe;border:1px solid #e9d5ff;margin:16px;border-radius:10px;overflow:hidden">
+        <div style="background:#6b3fa0;padding:18px;text-align:center">
+          <div style="color:#fff;font-size:17px;font-weight:700;font-family:Cairo">🏛 جامعة الجوف</div>
+          <div style="color:#d4b8f0;font-size:12px;font-family:Cairo">عمادة التطوير والجودة</div>
+        </div>
+        <div style="padding:18px;direction:rtl">
+          <p style="font-size:13px;color:#333;line-height:1.8;font-family:Cairo;margin-bottom:14px">
+            تحية طيبة،<br>الأستاذ/ة <strong>${rv.name}</strong>،<br><br>
+            نُفيدكم بأنه تم تعيينكم مراجعاً في <strong>نظام متابعة أعمال الجودة</strong>.
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px">
+            <tr style="background:#f3f0ff"><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo;border-bottom:1px solid #e9d5ff">الاسم</td><td style="padding:9px 12px;font-family:Cairo;border-bottom:1px solid #e9d5ff">${rv.name}</td></tr>
+            <tr><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo;border-bottom:1px solid #e9d5ff">اسم المستخدم</td><td style="padding:9px 12px;font-family:monospace;border-bottom:1px solid #e9d5ff">${reviewerKey}</td></tr>
+            <tr style="background:#f3f0ff"><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo;border-bottom:1px solid #e9d5ff">كلمة المرور</td><td style="padding:9px 12px;font-family:monospace;border-bottom:1px solid #e9d5ff">${rv.pass}</td></tr>
+            <tr><td style="padding:9px 12px;color:#6b3fa0;font-weight:700;font-family:Cairo">رابط النظام</td><td style="padding:9px 12px"><a href="https://osamashahin.github.io/jouf-quality/" style="color:#6b3fa0;font-size:12px">https://osamashahin.github.io/jouf-quality/</a></td></tr>
+          </table>
+          <div style="background:#f3f0ff;border-radius:8px;padding:12px;margin-bottom:12px">
+            <div style="color:#6b3fa0;font-weight:700;font-size:12px;font-family:Cairo;margin-bottom:6px">📋 المعايير المخصصة:</div>
+            ${critNames.map(c=>`<div style="font-size:12px;color:#444;font-family:Cairo;padding:2px 0">• ${c}</div>`).join('')}
+          </div>
+          <div style="background:#fffbeb;border-right:3px solid #f59e0b;padding:10px 12px;border-radius:6px;font-size:12px;color:#92400e;font-family:Cairo">
+            ⚠️ يُرجى تغيير كلمة المرور بعد أول دخول.
+          </div>
+        </div>
+        <div style="background:#6b3fa0;padding:14px;text-align:center;border-radius:0 0 10px 10px">
+          <div style="color:#d4b8f0;font-size:12px;font-family:Cairo">عمادة التطوير والجودة — جامعة الجوف</div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div style="padding:0 16px 16px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="copy-email-btn" onclick="
+          navigator.clipboard.writeText(${JSON.stringify(emailText)}).then(()=>{
+            this.textContent='✅ تم النسخ!';this.style.background='#16a34a';
+            setTimeout(()=>{this.textContent='📋 نسخ النص';this.style.background='#374151';},2500);
+          }).catch(()=>{
+            const ta=document.createElement('textarea');ta.value=${JSON.stringify(emailText)};
+            ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);
+            ta.select();document.execCommand('copy');document.body.removeChild(ta);
+            this.textContent='✅ تم النسخ!';setTimeout(()=>this.textContent='📋 نسخ النص',2500);
+          })"
+          style="flex:1;padding:10px;background:#374151;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Cairo">
+          📋 نسخ النص
+        </button>
+        <button onclick="
+          const s=encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة');
+          const b=encodeURIComponent(${JSON.stringify(emailText)});
+          window.location.href='mailto:${rv.email}?subject='+s+'&body='+b;"
+          style="flex:1;padding:10px;background:#6b3fa0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Cairo">
+          📤 فتح البريد
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
 }
 
 async function removeReviewer(key) {
