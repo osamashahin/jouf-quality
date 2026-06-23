@@ -825,9 +825,9 @@ function render_c_home() {
               <div style="width:10px;height:10px;border-radius:50%;background:${d.c};flex-shrink:0"></div>
               <span style="flex:1">${d.l}</span>
               <strong>${d.v}</strong>
-              <span style="color:var(--mu);font-size:10px">${totalReqs?Math.round(d.v/totalReqs*100):0}%</span>
+              <span style="color:var(--mu);font-size:10px">${totalExpectedReqs?Math.round(d.v/totalExpectedReqs*100):0}%</span>
             </div>`).join('')}
-            <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">الإجمالي: ${totalReqs} متطلب</div>
+            <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">الإجمالي: ${totalExpectedReqs} متطلب</div>
           </div>
         </div>
       </div>
@@ -2383,7 +2383,7 @@ function render_ag_home() {
               <div style="width:10px;height:10px;border-radius:50%;background:${d.c};flex-shrink:0"></div>
               <span style="flex:1">${d.l}</span>
               <strong>${d.v}</strong>
-              <span style="color:var(--mu);font-size:10px">${totalReqs?Math.round(d.v/totalReqs*100):0}%</span>
+              <span style="color:var(--mu);font-size:10px">${totalExpectedReqs?Math.round(d.v/totalExpectedReqs*100):0}%</span>
             </div>`).join('')}
             <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">
               الإجمالي: ${totalReqs} متطلب
@@ -2929,9 +2929,9 @@ function render_adm_home()   {
           <div style="flex:1;min-width:110px">${reqData.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px">
             <div style="width:10px;height:10px;border-radius:50%;background:${d.c};flex-shrink:0"></div>
             <span style="flex:1">${d.l}</span><strong>${d.v}</strong>
-            <span style="color:var(--mu);font-size:10px">${totalReqs?Math.round(d.v/totalReqs*100):0}%</span>
+            <span style="color:var(--mu);font-size:10px">${totalExpectedReqs?Math.round(d.v/totalExpectedReqs*100):0}%</span>
           </div>`).join('')}
-          <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">الإجمالي: ${totalReqs} متطلب</div></div>
+          <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">الإجمالي: ${totalExpectedReqs} متطلب</div></div>
         </div>
       </div>
       <div class="card"><div class="ctit">${ico.ppl}الجهات</div>
