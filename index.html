@@ -875,7 +875,8 @@ let IM_OPEN_SUB  = {};   // {subNum: bool}
 function render_c_crit() {
   const totalMain = INST_CRITERIA.length;
   const totalCrit = INST_CRITERIA.reduce((a,m)=>a+m.subs.reduce((b,s)=>b+s.criteria.length,0),0);
-  document.getElementById('c-crit').innerHTML = `
+  const critEl = document.getElementById('adm-crit') || document.getElementById('c-crit');
+  critEl.innerHTML = `
     <div class="ph"><div class="pht"><h1>إدارة المعايير والإجراءات</h1><p>${totalMain} معايير رئيسية — ${totalCrit} محك</p></div></div>
     <div id="im-list">${INST_CRITERIA.map(m=>imRenderMain(m)).join('')}</div>`;
 }
