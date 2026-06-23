@@ -188,6 +188,7 @@ textarea.fc{resize:vertical;min-height:75px}
 .im-edit-inline{display:flex;gap:6px;align-items:center;flex:1}
 .im-edit-inline input{flex:1;padding:5px 9px;border:1.5px solid var(--acc);border-radius:6px;font-family:'Cairo',sans-serif;font-size:12.5px;direction:rtl;outline:none}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -2486,9 +2487,10 @@ function render_adm_track() {
           <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
           <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
           <td><span class="bdg ba" style="font-size:10px">✅${c}</span><span class="bdg bu" style="font-size:10px">🔵${u}</span><span class="bdg br" style="font-size:10px">↩${r}</span><span class="bdg bs" style="font-size:10px">⬜${p}</span></td>
+          <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
           <td>${badge}</td>
           <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
-        </tr>`;}).join(''):'<tr><td colspan="7" class="empty">لا توجد إجراءات</td></tr>'}
+        </tr>`;}).join(''):'<tr><td colspan="8" class="empty">لا توجد إجراءات</td></tr>'}
       </tbody></table></div></div>
     <div id="c-track-detail-adm"></div>`;
 }
@@ -2540,6 +2542,19 @@ function render_c_reviewers_adm() {
   document.getElementById('adm-reviewers').innerHTML=tmp.innerHTML;
   document.body.removeChild(tmp);
 }
+// ─── إعدادات EmailJS (مُخزَّنة في المتصفح فقط) ───
+window.EMAILJS_CONFIG = JSON.parse(localStorage.getItem('emailjs_cfg') || '{}');
+function saveEmailJSConfig() {
+  const cfg = {
+    serviceId:  document.getElementById('ejs-sid').value.trim(),
+    templateId: document.getElementById('ejs-tid').value.trim(),
+    publicKey:  document.getElementById('ejs-pk').value.trim(),
+  };
+  localStorage.setItem('emailjs_cfg', JSON.stringify(cfg));
+  window.EMAILJS_CONFIG = cfg;
+  toast('✅ تم حفظ إعدادات EmailJS', true);
+}
+
 function render_adm_profile() {
   const tmp=document.createElement('div'); tmp.id='c-profile'; tmp.style.display='none';
   document.body.appendChild(tmp); render_c_profile();
@@ -3099,6 +3114,19 @@ function render_c_reviewers() {
       </div>
       <div id="nrv-msg" style="display:none;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
       <button class="btn btn-p" onclick="addReviewer()">إضافة المراجع ←</button>
+    </div>
+
+    <div class="card" style="max-width:580px">
+      <div class="ctit">📧 إعداد الإرسال التلقائي للبريد (EmailJS)</div>
+      <div class="notif ni" style="margin-bottom:14px">💡 أنشئ حساباً مجانياً في <a href="https://www.emailjs.com" target="_blank" style="color:var(--pd)">emailjs.com</a> ثم أدخل البيانات أدناه لإرسال البريد مباشرة من النظام بدون Outlook.</div>
+      <div class="fg"><label class="fl">Service ID</label>
+        <input class="fc" id="ejs-sid" placeholder="service_xxxxxxx" dir="ltr" value="${window.EMAILJS_CONFIG?.serviceId||''}"></div>
+      <div class="fg"><label class="fl">Template ID</label>
+        <input class="fc" id="ejs-tid" placeholder="template_xxxxxxx" dir="ltr" value="${window.EMAILJS_CONFIG?.templateId||''}"></div>
+      <div class="fg"><label class="fl">Public Key</label>
+        <input class="fc" id="ejs-pk" placeholder="xxxxxxxxxxxxxxxxxxxxxx" dir="ltr" value="${window.EMAILJS_CONFIG?.publicKey||''}"></div>
+      <button class="btn btn-p btn-sm" onclick="saveEmailJSConfig()">💾 حفظ الإعدادات</button>
+      ${window.EMAILJS_CONFIG?.serviceId ? '<span style="font-size:12px;color:var(--ok);margin-right:10px">✅ EmailJS مُفعَّل</span>' : '<span style="font-size:12px;color:var(--mu);margin-right:10px">⬜ غير مُفعَّل — سيُستخدم تطبيق البريد</span>'}
     </div>`;
 }
 window.render_c_reviewers = render_c_reviewers;
@@ -3151,11 +3179,30 @@ function sendCredentialsByEmail(reviewerKey) {
 
   const critNames = (rv.criteria||[]).map(cn => {
     const m = INST_CRITERIA.find(x => String(x.num) === String(cn));
-    return m ? 'معيار ' + m.num + ': ' + m.title : cn;
-  }).join('\n    - ');
+    return m ? `معيار ${m.num}: ${m.title}` : cn;
+  });
 
+  // ── محاولة الإرسال عبر EmailJS إذا كانت مُهيَّأة ──
+  const EJS = window.EMAILJS_CONFIG || {};
+  if (EJS.serviceId && EJS.templateId && EJS.publicKey && window.emailjs) {
+    emailjs.init(EJS.publicKey);
+    emailjs.send(EJS.serviceId, EJS.templateId, {
+      to_email:   rv.email,
+      to_name:    rv.name,
+      username:   reviewerKey,
+      password:   rv.pass,
+      system_url: 'https://osamashahin.github.io/jouf-quality/',
+      criteria:   critNames.join('\n'),
+    }).then(() => {
+      toast('✅ تم إرسال البريد الإلكتروني إلى ' + rv.email + ' بنجاح', true);
+    }).catch(err => {
+      toast('❗ فشل الإرسال عبر EmailJS: ' + (err.text||err.message||'خطأ'));
+    });
+    return;
+  }
+
+  // ── fallback: فتح تطبيق البريد ──
   const subject = encodeURIComponent('بيانات الدخول — نظام متابعة أعمال الجودة — جامعة الجوف');
-
   const body = encodeURIComponent([
     'تحية طيبة،',
     '',
@@ -3172,26 +3219,20 @@ function sendCredentialsByEmail(reviewerKey) {
     '════════════════════════',
     '',
     'المعايير المخصصة لكم:',
-    '    - ' + critNames,
+    '    - ' + critNames.join('\n    - '),
     '',
-    '⚠ يُرجى تغيير كلمة المرور بعد أول دخول',
-    'من شاشة "بياناتي وكلمة المرور" في القائمة الجانبية.',
+    '⚠ يُرجى تغيير كلمة المرور بعد أول دخول.',
     '',
-    'يُرجى التواصل مع عمادة التطوير والجودة عند أي استفسار.',
-    '',
-    'عمادة التطوير والجودة',
-    'جامعة الجوف',
+    'عمادة التطوير والجودة — جامعة الجوف',
   ].join('\n'));
 
-  // فتح تطبيق البريد بدون مغادرة الصفحة
-  const mailto = 'mailto:' + rv.email + '?subject=' + subject + '&body=' + body;
   const a = document.createElement('a');
-  a.href = mailto;
+  a.href = 'mailto:' + rv.email + '?subject=' + subject + '&body=' + body;
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => document.body.removeChild(a), 1000);
-  toast('✓ تم فتح تطبيق البريد — أضغط إرسال في برنامج البريد', true);
+  setTimeout(() => document.body.removeChild(a), 500);
+  toast('✓ تم فتح تطبيق البريد — اضغط إرسال', true);
 }
 
 async function removeReviewer(key) {
@@ -3531,7 +3572,7 @@ function render_rv_track() {
     <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_rv_track();})">🔄</button></div>
     ${buildFilterBar('rf-track','render_rv_track_filtered()')}
     <div class="card"><div class="tw"><table class="tbl">
-      <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>الحالة</th></tr></thead>
+      <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>تاريخ الإرسال</th><th>الحالة</th><th>عرض</th></tr></thead>
       <tbody id="rf-track-body">${rows.length?rows.map(({it,idx,reqText,r,critLabel})=>{
         let badge='';
         if(r.status==='pending')      badge='<span class="bdg bs">⬜ لم يُرفع</span>';
@@ -3543,8 +3584,10 @@ function render_rv_track() {
           <td style="font-size:11px;font-weight:600">${it.proc}</td>
           <td style="font-size:12px">${reqText}</td>
           <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
-          <td>${badge}</td></tr>
-          ${r.status==='returned'&&r.committee_note?`<tr><td colspan="5" style="font-size:11px;color:#b91c1c;padding-right:12px;padding-bottom:8px">↩ ${r.committee_note}</td></tr>`:''}`;
+          <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+            <td>${badge}</td>
+            <td><button class="btn btn-p btn-sm" onclick="rvShowTimeline('${it.id}',${idx})">عرض</button></td>
+          </tr>`;
       }).join(''):'<tr><td colspan="5" class="empty">لا توجد إجراءات بعد</td></tr>'}
       </tbody></table></div></div>`;
   setTimeout(()=>showFilterCount('rf-track',rows.length,rows.length),0);
@@ -3568,17 +3611,43 @@ function render_rv_track_filtered() {
     else if(r.status==='under_review') badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
     else if(r.status==='returned') badge='<span class="bdg br">↩ معاد</span>';
     else if(r.status==='completed') badge='<span class="bdg ba">✅ مكتمل</span>';
-    return `<tr><td style="font-size:11px">${critLabel}</td>
+    return `<tr>
+      <td style="font-size:11px">${critLabel}</td>
       <td style="font-size:11px;font-weight:600">${it.proc}</td>
       <td style="font-size:12px">${reqText}</td>
       <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
-      <td>${badge}</td></tr>
-      ${r.status==='returned'&&r.committee_note?`<tr><td colspan="5" style="font-size:11px;color:#b91c1c;padding-right:12px">↩ ${r.committee_note}</td></tr>`:''}`;
+      <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+      <td>${badge}</td>
+      <td><button class="btn btn-p btn-sm" onclick="rvShowTimeline('${it.id}',${idx})">عرض</button></td>
+    </tr>`;
   }).join(''):'<tr><td colspan="5" class="empty">لا توجد نتائج</td></tr>';
   showFilterCount('rf-track',filtered.length,allRows.length);
 }
 
 // ─── بيانات المراجع ───
+function rvShowTimeline(itemId, idx) {
+  const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const reqs=getReqList(it), rs=getReqStatus(it);
+  const r=rs[idx]||{status:'pending'};
+  const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+
+  let detailDiv=document.getElementById('rv-track-detail');
+  if(!detailDiv){detailDiv=document.createElement('div');detailDiv.id='rv-track-detail';document.getElementById('rv-track').appendChild(detailDiv);}
+  detailDiv.innerHTML=`
+    <div class="card" style="margin-top:14px;border-top:3px solid var(--p)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--pd)">${critLabel}</div>
+          <div style="font-size:12px;color:var(--mu)">${AGS[it.agency]?.icon||''} ${it.agency_name} · أُرسل: ${it.sent_at||'—'}</div>
+        </div>
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('rv-track-detail').innerHTML=''">✕ إغلاق</button>
+      </div>
+      ${it.committee_note?`<div class="notif ni">📝 ملاحظات الإرسال: ${it.committee_note}</div>`:''}
+      ${renderReqTimeline(r, reqs[idx]||'—', idx)}
+    </div>`;
+  detailDiv.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
 function render_rv_profile() {
   document.getElementById('rv-profile').innerHTML=`
     <div class="ph"><div class="pht"><h1>بياناتي</h1></div></div>
