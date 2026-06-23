@@ -784,11 +784,20 @@ function render_c_home() {
     return `<svg width="${size}" height="${size}" viewBox="0 0 140 140">${slices.join('')}</svg>`;
   }
 
+  // احتساب المتطلبات غير المرسلة (موجودة في المعايير لكن لم يُرسل بها إجراء)
+  let totalExpectedReqs = 0;
+  INST_CRITERIA.forEach(m => m.subs.forEach(s => s.criteria.forEach(c => {
+    totalExpectedReqs += (INST_REQUIREMENTS[c.num]||[]).filter(r=>r&&r.trim()).length;
+  })));
+  const sentReqs = pendingR + underR + returnedR + completedR;
+  const notSentR = Math.max(0, totalExpectedReqs - sentReqs);
+
   const reqDonutData = [
     {v:completedR, c:'#16a34a', l:'مكتمل'},
     {v:underR,     c:'#2563eb', l:'قيد المراجعة'},
     {v:returnedR,  c:'#dc2626', l:'معاد للملاحظات'},
     {v:pendingR,   c:'#d1d5db', l:'قيد الاستكمال'},
+    {v:notSentR,   c:'#f3f4f6', l:'غير مرسل'},
   ];
 
   updateBadges();
@@ -799,9 +808,10 @@ function render_c_home() {
     <!-- إحصائيات سريعة -->
     <div class="sr">
       <div class="sc" style="border-top:3px solid #6b3fa0"><div class="ico">📤</div><div class="num">${ALL_ITEMS.length}</div><div class="lbl">إجراءات مُرسلة</div></div>
+      <div class="sc" style="border-top:3px solid #374151"><div class="ico">⚪</div><div class="num">${notSentR}</div><div class="lbl">غير مرسل</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingR}</div><div class="lbl">قيد الاستكمال</div></div>
       <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underR}</div><div class="lbl">قيد المراجعة</div></div>
       <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completedR}</div><div class="lbl">متطلبات مكتملة</div></div>
-      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingR}</div><div class="lbl">قيد الاستكمال</div></div>
     </div>
 
     <!-- Donut Chart + أفضلية المتطلبات -->
