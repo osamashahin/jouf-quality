@@ -3221,7 +3221,7 @@ function sendCredentialsByEmail(reviewerKey) {
 <body>
 <div class="toolbar">
   <span>📧 معاينة الإيميل — ${rv.name}</span>
-  <button class="tbtn" style="background:#6b3fa0;color:#fff" onclick="sendEmail()">📤 فتح تطبيق البريد وإرسال</button>
+  <button class="tbtn" style="background:#6b3fa0;color:#fff" onclick="sendEmail()">📧 إرسال عبر Gmail</button>
   <button class="tbtn" style="background:#374151;color:#fff" onclick="window.print()">🖨 طباعة</button>
 </div>
 <div class="wrap">
@@ -3259,8 +3259,9 @@ function sendCredentialsByEmail(reviewerKey) {
 </div>
 <script>
 function sendEmail() {
+  const to      = '${rv.email}';
   const subject = encodeURIComponent('بيانات الدخول - نظام متابعة اعمال الجودة - جامعة الجوف');
-  const body = encodeURIComponent(
+  const body    = encodeURIComponent(
     'السلام عليكم\n\nالاستاذ/ة ${rv.name}\n\n' +
     'الاسم: ${rv.name}\n' +
     'اسم المستخدم: ${reviewerKey}\n' +
@@ -3269,7 +3270,9 @@ function sendEmail() {
     'المعايير المخصصة:\n${critNames.map(c=>'- '+c).join('\\n')}\n\n' +
     'مع تحيات عمادة التطوير والجودة - جامعة الجوف'
   );
-  window.open('mailto:${rv.email}?subject=' + subject + '&body=' + body);
+  // فتح Gmail في المتصفح مباشرة
+  const gmailUrl = 'https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(to) + '&su=' + subject + '&body=' + body;
+  window.open(gmailUrl, '_blank');
 }
 <\/script>
 </body></html>`;
