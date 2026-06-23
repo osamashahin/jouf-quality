@@ -2116,34 +2116,327 @@ function render_ag_track_filtered() {
 //  ③ ADMIN
 // ═══════════════════════════════════════════
 function buildAdmin() {
-  document.getElementById('sidebar').innerHTML=`
-    <div class="sbg">التقارير</div>
-    <div class="sbi active" onclick="sbAct(this);showScreen('adm-h');render_adm_h()">${ico.grid}الملخص الشامل</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('adm-all');render_adm_all()">${ico.list}جميع الإجراءات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('adm-ag');render_adm_ag()">${ico.ppl}تقرير الجهات</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('adm-cr');render_adm_cr()">${ico.bar}تقرير المعايير</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('adm-log');render_adm_log()">${ico.pen}السجل الكامل</div>
-    <div class="sbg">⚠ إدارة</div>
-    <div class="sbi" onclick="sbAct(this);showScreen('adm-rst')">${ico.trash}إعادة ضبط</div>`;
+  document.getElementById('topbar').style.background = USERS.admin?.grad || 'linear-gradient(135deg,#374151,#1f2937)';
+  document.getElementById('uchip').textContent = '👤 ' + CU.name;
 
-  document.getElementById('mc').innerHTML=`
-    <div class="screen active" id="adm-h"></div>
-    <div class="screen" id="adm-all"></div>
-    <div class="screen" id="adm-ag"></div>
-    <div class="screen" id="adm-cr"></div>
+  document.getElementById('sidebar').innerHTML = `
+    <div class="sbg">الرئيسية</div>
+    <div class="sbi active" onclick="sbAct(this);showScreen('adm-home');render_adm_home()">${ico.grid}نظرة عامة</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-crit');render_c_crit();document.getElementById('adm-crit').innerHTML=document.getElementById('c-crit')?.innerHTML||''" style="display:none"></div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-crit');admRenderCrit()">${ico.check}إدارة المعايير والإجراءات</div>
+    <div class="sbg">الإجراءات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-send');admBuildSend()">${ico.send}إرسال إجراء</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-appr');render_adm_appr()">${ico.doc}اعتماد الإجراءات<span class="sbdg" id="adm-bdg-a" style="background:#dc2626;animation:pulse 1.5s infinite">0</span></div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-track');render_adm_track()">${ico.clock}متابعة الإجراءات</div>
+    <div class="sbg">السجلات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-log');render_adm_log()">${ico.pen}سجل النشاط</div>
+    <div class="sbg">الإعدادات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-agencies');render_c_agencies_adm()">${ico.ppl}إدارة الجهات</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-reviewers');render_c_reviewers_adm()">${ico.ppl}إدارة المراجعين</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-profile');render_adm_profile()">${ico.pen}بياناتي وكلمة المرور</div>
+    <div class="sbi" onclick="sbAct(this);showScreen('adm-clear');render_c_clear()" style="color:#dc2626">${ico.trash}مسح جميع الإجراءات</div>`;
+
+  document.getElementById('mc').innerHTML = `
+    <div class="screen active" id="adm-home"></div>
+    <div class="screen" id="adm-crit"></div>
+    <div class="screen" id="adm-send"></div>
+    <div class="screen" id="adm-appr"></div>
+    <div class="screen" id="adm-appr-detail"></div>
+    <div class="screen" id="adm-track"></div>
     <div class="screen" id="adm-log"></div>
-    <div class="screen" id="adm-rst">
-      <div class="ph"><div class="pht"><h1>⚠ إعادة ضبط</h1></div></div>
-      <div style="border:2px solid #fecaca;border-radius:12px;padding:18px;background:#fff9f9">
-        <p style="font-weight:700;color:#dc2626;margin-bottom:12px">⚠ العملية لا يمكن التراجع عنها — يُحذف من Supabase نهائياً</p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-er" onclick="admRstAll()">🗑 حذف كل الإجراءات والسجل</button>
-          <button class="btn btn-g" onclick="admRstItems()">حذف الإجراءات فقط</button>
-        </div>
+    <div class="screen" id="adm-agencies"></div>
+    <div class="screen" id="adm-reviewers"></div>
+    <div class="screen" id="adm-profile"></div>
+    <div class="screen" id="adm-clear"></div>`;
+
+  render_adm_home();
+  updateBadges();
+}
+
+// ── مدير النظام يعيد استخدام دوال العمادة مع تعديل معرّف الشاشة ──
+function admRenderCrit()   { render_c_crit();   document.getElementById('adm-crit').innerHTML      = document.getElementById('c-crit')?.innerHTML||'جاري التحميل...'; }
+function admBuildSend() {
+  document.getElementById('adm-send').innerHTML = `
+    <div class="ph"><div class="pht"><h1>إرسال إجراء</h1></div></div>
+    <div class="card" style="max-width:680px">
+      <div class="fg"><label class="fl">المعيار الرئيسي *</label>
+        <select class="fc" id="adm-main" onchange="admFillSubs()"><option value="">— اختر —</option>
+        ${INST_CRITERIA.map((m,i)=>`<option value="${i}">معيار ${m.num}: ${m.title}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">المعيار الفرعي *</label>
+        <select class="fc" id="adm-sub" onchange="admFillCritList()"><option value="">— اختر —</option></select></div>
+      <div class="fg" id="adm-crit-wrap" style="display:none"><label class="fl">المحك *</label>
+        <select class="fc" id="adm-crit" onchange="admFillReqs()"><option value="">— اختر —</option></select></div>
+      <div class="fg" id="adm-reqs-wrap" style="display:none"><label class="fl">المتطلبات</label>
+        <div id="adm-reqs" style="background:var(--gray);border-radius:8px;padding:10px 12px"></div></div>
+      <div class="fg"><label class="fl">الجهة *</label>
+        <select class="fc" id="adm-agency"><option value="">— اختر —</option>
+        ${Object.entries({...AGS,...EXTRA_AGENCIES}).map(([k,ag])=>`<option value="${k}">${ag.icon||''} ${ag.name}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">الملاحظات *</label>
+        <textarea class="fc" id="adm-note-send" placeholder="اكتب الملاحظات..."></textarea></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" onclick="admSend()">إرسال ←</button>
+        <button class="btn btn-g" onclick="admBuildSend()">مسح</button>
       </div>
     </div>`;
-  render_adm_h();
 }
+function admFillSubs(){const mi=document.getElementById('adm-main').value,sel=document.getElementById('adm-sub');sel.innerHTML='<option value="">— اختر —</option>';if(mi!=='')INST_CRITERIA[parseInt(mi)].subs.forEach((s,si)=>{sel.innerHTML+=`<option value="${mi}-${si}">${s.num} — ${s.title}</option>`;});admFillCritList();}
+function admFillCritList(){const val=document.getElementById('adm-sub').value,wrap=document.getElementById('adm-crit-wrap'),sel=document.getElementById('adm-crit');sel.innerHTML='<option value="">— اختر —</option>';if(!val){wrap.style.display='none';admFillReqs();return;}const[mi,si]=val.split('-').map(Number);INST_CRITERIA[mi].subs[si].criteria.forEach(c=>{sel.innerHTML+=`<option value="${c.num}">${c.num} — ${c.title}</option>`;});wrap.style.display='block';admFillReqs();}
+function admFillReqs(){const num=document.getElementById('adm-crit').value,wrap=document.getElementById('adm-reqs-wrap'),box=document.getElementById('adm-reqs');if(!num){wrap.style.display='none';box.innerHTML='';return;}const reqs=(INST_REQUIREMENTS[num]||[]).filter(r=>r&&r.trim());wrap.style.display='block';box.innerHTML=reqs.length?reqs.map(r=>`<label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--bd)"><input type="checkbox" class="adm-req-chk" data-crit="${num}" data-title="${esc(findInstCriterion(num)?.title||'')}" value="${esc(r)}" checked style="margin-top:3px"><span>${esc(r)}</span></label>`).join(''):'<div style="font-size:11px;color:var(--mu)">لا توجد متطلبات محددة</div>';}
+async function admSend(){
+  const mi=document.getElementById('adm-main').value,subVal=document.getElementById('adm-sub').value;
+  const critNum=document.getElementById('adm-crit')?.value||'';
+  const ag=document.getElementById('adm-agency').value,note=document.getElementById('adm-note-send').value.trim();
+  if(!mi||!subVal||!ag){toast('❗ يرجى إكمال الحقول المطلوبة');return;}
+  if(!note){toast('❗ يرجى كتابة الملاحظات');return;}
+  if(!critNum){toast('❗ يرجى تحديد المحك');return;}
+  const[smi,ssi]=subVal.split('-').map(Number);
+  const mainCrit=INST_CRITERIA[smi],subCrit=mainCrit.subs[ssi],crit=findInstCriterion(critNum);
+  const checkedReqs=Array.from(document.querySelectorAll('.adm-req-chk:checked')).map(c=>c.value);
+  const selectedReqs=[{num:critNum,title:crit?.title||'',reqs:checkedReqs}];
+  const allAgs={...AGS,...EXTRA_AGENCIES};
+  const item={id:'p'+Date.now()+Math.random().toString(36).slice(2,5),
+    crit_idx:smi,crit_title:`معيار ${mainCrit.num}: ${mainCrit.title}`,
+    proc:`${subCrit.num} — ${subCrit.title}`,agency:ag,agency_name:allAgs[ag]?.name||ag,
+    committee_note:note,committee_file:'',agency_file_note:'',agency_uploaded_at:'',
+    agency_note:'',resubmit_count:0,status:'pending',final_note:'',decided_at:'',
+    sent_at:new Date().toLocaleString('ar-SA'),
+    inst_crit_num:critNum,inst_crit_title:crit?.title||'',
+    inst_requirements:JSON.stringify(selectedReqs),
+    req_status:JSON.stringify(selectedReqs[0].reqs.map(()=>({file:'',uploaded_at:'',agency_note:'',committee_note:'',status:'pending'}))),
+    sent_by:CU.id,sent_by_name:CU.name};
+  try{loading(true,'جاري الإرسال...');await sbPost('procedures',item);
+    await sbPost('activity_log',{msg:`[مدير النظام] إرسال إجراء "${item.proc}" إلى ${item.agency_name}`,actor:CU.name});
+    await loadAll();loading(false);admBuildSend();render_adm_home();
+    toast('✅ تم الإرسال إلى '+item.agency_name,true);
+  }catch(e){loading(false);toast('❗ فشل: '+e.message);}
+}
+
+function render_adm_home()   {
+  // نفس إحصائيات العمادة
+  const t=ALL_ITEMS.length;
+  let pendingReqs=0,underReview=0,returned=0,completed=0;
+  ALL_ITEMS.forEach(it=>getReqStatus(it).forEach(r=>{
+    if(r.status==='pending')pendingReqs++;
+    else if(r.status==='under_review')underReview++;
+    else if(r.status==='returned')returned++;
+    else if(r.status==='completed')completed++;
+  }));
+  updateBadges();
+
+  function donut(data,size=130){
+    const r=50,cx=65,cy=65;
+    const total=data.reduce((s,d)=>s+d.v,0);
+    if(!total)return `<svg width="${size}" height="${size}" viewBox="0 0 130 130"><circle cx="65" cy="65" r="50" fill="none" stroke="#e5e7eb" stroke-width="18"/><text x="65" y="71" text-anchor="middle" font-size="13" fill="#9ca3af" font-family="Cairo">لا بيانات</text></svg>`;
+    let angle=-90; const slices=[];
+    data.forEach(d=>{if(!d.v)return; const pct=d.v/total; const sa=angle*Math.PI/180,ea=(angle+pct*360)*Math.PI/180;
+      const x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa),x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);
+      slices.push(`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${pct>0.5?1:0},1 ${x2},${y2} Z" fill="${d.c}" opacity="0.9"/>`);
+      angle+=pct*360;});
+    slices.push(`<circle cx="${cx}" cy="${cy}" r="32" fill="white"/>`);
+    const ml=data.reduce((p,c)=>c.v>p.v?c:p,data[0]);
+    slices.push(`<text x="${cx}" y="${cy-5}" text-anchor="middle" font-size="17" font-weight="bold" fill="#1f2937" font-family="Cairo">${ml.v}</text>`);
+    slices.push(`<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="9" fill="#6b7280" font-family="Cairo">${ml.l}</text>`);
+    return `<svg width="${size}" height="${size}" viewBox="0 0 130 130">${slices.join('')}</svg>`;
+  }
+  const reqData=[{v:completed,c:'#16a34a',l:'مكتمل'},{v:underReview,c:'#2563eb',l:'تحت المراجعة'},{v:returned,c:'#dc2626',l:'معاد للملاحظات'},{v:pendingReqs,c:'#d1d5db',l:'لم يُرفع'}];
+  const totalReqs=pendingReqs+underReview+returned+completed;
+
+  document.getElementById('adm-home').innerHTML=`
+    <div class="ph"><div class="pht"><h1>نظرة عامة</h1><p>مدير النظام — صلاحيات كاملة</p></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_home();toast('تم التحديث')})">🔄</button></div>
+    <div class="sr">
+      <div class="sc" style="border-top:3px solid #374151"><div class="ico">📤</div><div class="num">${t}</div><div class="lbl">إجراءات مُرسلة</div></div>
+      <div class="sc" style="border-top:3px solid #2563eb"><div class="ico">🔵</div><div class="num">${underReview}</div><div class="lbl">تحت المراجعة</div></div>
+      <div class="sc" style="border-top:3px solid #16a34a"><div class="ico">✅</div><div class="num">${completed}</div><div class="lbl">مكتمل</div></div>
+      <div class="sc" style="border-top:3px solid #b45309"><div class="ico">⏳</div><div class="num">${pendingReqs}</div><div class="lbl">لم يُرفع</div></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="ctit">📊 توزيع المتطلبات</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div>${donut(reqData)}</div>
+          <div style="flex:1;min-width:110px">${reqData.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px">
+            <div style="width:10px;height:10px;border-radius:50%;background:${d.c};flex-shrink:0"></div>
+            <span style="flex:1">${d.l}</span><strong>${d.v}</strong>
+            <span style="color:var(--mu);font-size:10px">${totalReqs?Math.round(d.v/totalReqs*100):0}%</span>
+          </div>`).join('')}
+          <div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px;font-size:12px;font-weight:700">الإجمالي: ${totalReqs} متطلب</div></div>
+        </div>
+      </div>
+      <div class="card"><div class="ctit">${ico.ppl}الجهات</div>
+        <table class="tbl"><thead><tr><th>الجهة</th><th>✅</th><th>🔵</th><th>↩</th><th>⬜</th><th>%</th></tr></thead><tbody>
+        ${Object.entries({...AGS,...EXTRA_AGENCIES}).map(([k,ag])=>{
+          let p=0,u=0,rv=0,c=0;
+          ALL_ITEMS.filter(i=>i.agency===k).forEach(it=>getReqStatus(it).forEach(x=>{
+            if(x.status==='pending')p++;else if(x.status==='under_review')u++;else if(x.status==='returned')rv++;else if(x.status==='completed')c++;
+          }));
+          const tot=p+u+rv+c; const pct=tot?Math.round(c/tot*100):0;
+          return `<tr><td style="font-size:11px">${ag.icon||''} ${ag.name}</td><td>${c}</td><td>${u}</td><td>${rv}</td><td>${p}</td>
+            <td><div class="prog" style="min-width:60px"><div class="pf" style="width:${pct}%;background:${pct===100?'#16a34a':'#374151'}"></div></div>${pct}%</td></tr>`;
+        }).join('')}</tbody></table>
+      </div>
+    </div>`;
+}
+
+function render_adm_appr() {
+  // نفس اعتماد الإجراءات لكن في شاشة adm-appr
+  const rows=[];
+  ALL_ITEMS.forEach(it=>{const reqs=getReqList(it),rs=getReqStatus(it);
+    reqs.forEach((reqText,idx)=>{const r=rs[idx]||{status:'pending'};
+      if(r.status!=='pending') rows.push({it,idx,reqText,r});});});
+  const cnt=rows.filter(x=>x.r.status==='under_review').length;
+  const ba=document.getElementById('adm-bdg-a'); if(ba) ba.textContent=cnt;
+  document.getElementById('adm-appr').innerHTML=`
+    <div class="ph"><div class="pht"><h1>اعتماد الإجراءات</h1></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_appr();})">🔄</button></div>
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>المتطلب</th><th>الجهة</th><th>الحالة</th><th>اطلاع</th></tr></thead>
+      <tbody>${rows.length?rows.map(({it,idx,reqText,r})=>{
+        let badge='';
+        if(r.status==='under_review')badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if(r.status==='returned')badge='<span class="bdg br">↩ معاد</span>';
+        else if(r.status==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
+        return `<tr style="${r.status==='under_review'?'background:#eff6ff':''}">
+          <td style="font-size:11px">${it.inst_crit_num} — ${it.inst_crit_title}</td>
+          <td style="font-size:11px;font-weight:600">${it.proc}</td>
+          <td style="font-size:12px">${reqText}</td>
+          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+          <td>${badge}</td>
+          <td>${r.status!=='completed'?`<button class="btn btn-p btn-sm" onclick="admOpenReqDetail('${it.id}',${idx})">اطلاع</button>`:'<span style="font-size:11px;color:var(--ok)">✓ منتهي</span>'}</td>
+        </tr>`;}).join(''):'<tr><td colspan="6" class="empty">لا توجد مرفقات واردة</td></tr>'}
+      </tbody></table></div></div>`;
+}
+
+function admOpenReqDetail(itemId,idx) {
+  const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const reqs=getReqList(it),rs=getReqStatus(it),r=rs[idx]||{};
+  document.getElementById('adm-appr-detail').innerHTML=`
+    <div class="ph"><div class="pht"><h1>اطلاع على المتطلب</h1></div>
+    <button class="btn btn-g btn-sm" onclick="showScreen('adm-appr');render_adm_appr()">← رجوع</button></div>
+    <div class="card" style="max-width:640px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:12px">
+        <div><span style="color:var(--mu)">المعيار الفرعي:</span><br><strong>${it.inst_crit_num} — ${it.inst_crit_title}</strong></div>
+        <div><span style="color:var(--mu)">المحك:</span><br><strong>${it.proc}</strong></div>
+        <div><span style="color:var(--mu)">الجهة:</span><br><strong>${AGS[it.agency]?.icon||''} ${it.agency_name}</strong></div>
+        <div><span style="color:var(--mu)">المتطلب:</span><br><strong>${reqs[idx]}</strong></div>
+      </div>
+      ${r.file?`<div class="notif nok" style="margin-bottom:14px">📎 <strong>${r.file}</strong>
+        ${r.file_url?`<a href="${r.file_url}" target="_blank" class="btn btn-g btn-sm" style="margin-right:10px">⬇ تنزيل</a>`:''}
+        <span style="color:var(--mu);font-size:10px;display:block;margin-top:4px">${fmtDate(r.uploaded_at)}</span></div>`:''}
+      ${r.agency_note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px"><strong style="color:#15803d">💬 ملاحظة الجهة:</strong><br>${r.agency_note}</div>`:''}
+      ${r.status!=='completed'?`
+      <div class="fg"><label class="fl">ملاحظة عند الإعادة (اختياري)</label>
+        <textarea class="fc" id="adm-note-${itemId}-${idx}" placeholder="اكتب ملاحظتك...">${r.committee_note||''}</textarea></div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ok" onclick="admDecideReq('${itemId}',${idx},'completed')">✅ مكتمل</button>
+        <button class="btn btn-er" onclick="admDecideReq('${itemId}',${idx},'returned')">↩ معاد وفق الملاحظات</button>
+      </div>`:`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;text-align:center;font-weight:700;color:#15803d">✅ تم الاعتماد</div>`}
+    </div>`;
+  showScreen('adm-appr-detail');
+}
+
+async function admDecideReq(itemId,idx,decision) {
+  const note=(document.getElementById(`adm-note-${itemId}-${idx}`)?.value||'').trim();
+  const it=ALL_ITEMS.find(i=>i.id===itemId); if(!it) return;
+  const rs=getReqStatus(it);
+  rs[idx].status=decision; rs[idx].committee_note=decision==='returned'?note:''; rs[idx].reviewed_by=CU.name;
+  try {
+    loading(true,'جاري حفظ القرار...');
+    await sbPatch('procedures',itemId,{req_status:JSON.stringify(rs)});
+    const label=decision==='completed'?'اعتماد':'إعادة للملاحظات';
+    await sbPost('activity_log',{msg:`[مدير النظام] ${label}: "${getReqList(it)[idx]}" (${it.agency_name})`,actor:CU.name});
+    await loadAll(); loading(false);
+    showScreen('adm-appr'); render_adm_appr();
+    toast(decision==='completed'?'✅ تم الاعتماد':'↩ تم الإعادة',decision==='completed');
+  } catch(e){loading(false);toast('❗ فشل: '+e.message);}
+}
+
+function render_adm_track() {
+  // نفس render_c_track لكن يكتب في adm-track
+  const rows=[];
+  ALL_ITEMS.forEach(it=>{const reqs=getReqList(it),rs=getReqStatus(it);
+    const critLabel=it.inst_crit_num?`${it.inst_crit_num} — ${it.inst_crit_title}`:it.proc;
+    let p=0,u=0,r=0,c=0;
+    rs.forEach(x=>{if(x.status==='pending')p++;else if(x.status==='under_review')u++;else if(x.status==='returned')r++;else if(x.status==='completed')c++;});
+    const total=reqs.length,overallStatus=c===total&&total>0?'completed':u>0?'under_review':r>0?'returned':'pending';
+    rows.push({it,reqs,rs,critLabel,p,u,r,c,total,overallStatus});
+  });
+  document.getElementById('adm-track').innerHTML=`
+    <div class="ph"><div class="pht"><h1>متابعة الإجراءات</h1></div>
+    <button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_track();toast('تم التحديث')})">🔄</button></div>
+    <div class="card"><div class="tw"><table class="tbl">
+      <thead><tr><th>المعيار الفرعي</th><th>المحك</th><th>الجهة</th><th>تاريخ الإرسال</th><th>المتطلبات</th><th>الحالة</th><th>عرض</th></tr></thead>
+      <tbody>${rows.length?rows.map(({it,critLabel,p,u,r,c,total,overallStatus})=>{
+        let badge='';
+        if(overallStatus==='completed')badge='<span class="bdg ba">✅ مكتمل</span>';
+        else if(overallStatus==='under_review')badge='<span class="bdg bu">🔵 تحت المراجعة</span>';
+        else if(overallStatus==='returned')badge='<span class="bdg br">↩ معاد</span>';
+        else badge='<span class="bdg bs">⬜ لم يُرفع</span>';
+        return `<tr><td style="font-size:11px">${it.crit_title||'—'}</td>
+          <td style="font-size:11.5px;font-weight:600">${critLabel}</td>
+          <td style="font-size:11px">${AGS[it.agency]?.icon||''} ${it.agency_name}</td>
+          <td style="font-size:10px;color:var(--mu)">${it.sent_at||'—'}</td>
+          <td><span class="bdg ba" style="font-size:10px">✅${c}</span><span class="bdg bu" style="font-size:10px">🔵${u}</span><span class="bdg br" style="font-size:10px">↩${r}</span><span class="bdg bs" style="font-size:10px">⬜${p}</span></td>
+          <td>${badge}</td>
+          <td><button class="btn btn-p btn-sm" onclick="cTrackDetail('${it.id}')">عرض</button></td>
+        </tr>`;}).join(''):'<tr><td colspan="7" class="empty">لا توجد إجراءات</td></tr>'}
+      </tbody></table></div></div>
+    <div id="c-track-detail-adm"></div>`;
+}
+function render_adm_log() {
+  // نفس render_c_log في شاشة adm-log
+  const el = document.getElementById('adm-log');
+  if (!el) return;
+  const actors=[...new Set(ALL_LOGS.map(l=>l.actor).filter(Boolean))];
+  el.innerHTML=`<div class="ph"><div class="pht"><h1>سجل النشاط</h1><p>${ALL_LOGS.length} نشاط</p></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="loadAll().then(()=>{render_adm_log();})">🔄</button>
+    <button class="btn btn-er btn-sm" onclick="clearActivityLog().then(()=>render_adm_log())">🗑 مسح</button></div></div>
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div style="flex:1;min-width:160px"><label class="fl">🔍 بحث</label><input class="fc" id="admlog-q" placeholder="ابحث..." oninput="admFilterLog()"></div>
+        <div style="min-width:150px"><label class="fl">المستخدم</label><select class="fc" id="admlog-actor" onchange="admFilterLog()"><option value="">الكل</option>${actors.map(a=>`<option value="${a}">${a}</option>`).join('')}</select></div>
+        <div style="min-width:120px"><label class="fl">من</label><input class="fc" type="date" id="admlog-from" onchange="admFilterLog()"></div>
+        <div style="min-width:120px"><label class="fl">إلى</label><input class="fc" type="date" id="admlog-to" onchange="admFilterLog()"></div>
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('admlog-q').value='';document.getElementById('admlog-actor').value='';document.getElementById('admlog-from').value='';document.getElementById('admlog-to').value='';admFilterLog()">✕</button>
+      </div>
+      <div id="admlog-count" style="font-size:11px;color:var(--mu);margin-top:6px">${ALL_LOGS.length} نشاط</div>
+    </div>
+    <div class="card" id="admlog-body">${renderLogItems(ALL_LOGS)}</div>`;
+}
+function admFilterLog(){
+  const q=(document.getElementById('admlog-q')?.value||'').toLowerCase();
+  const actor=document.getElementById('admlog-actor')?.value||'';
+  const from=document.getElementById('admlog-from')?.value||'';
+  const to=document.getElementById('admlog-to')?.value||'';
+  const filtered=ALL_LOGS.filter(l=>{
+    if(q&&!l.msg?.toLowerCase().includes(q)&&!l.actor?.toLowerCase().includes(q))return false;
+    if(actor&&l.actor!==actor)return false;
+    const day=l.created_at?l.created_at.split('T')[0]:'';
+    if(from&&day<from)return false; if(to&&day>to)return false; return true;
+  });
+  const body=document.getElementById('admlog-body'),cnt=document.getElementById('admlog-count');
+  if(body)body.innerHTML=renderLogItems(filtered);
+  if(cnt)cnt.textContent=`${filtered.length} من ${ALL_LOGS.length} نشاط`;
+}
+function render_c_agencies_adm() {
+  // بناء مؤقت في عنصر مخفي ثم نسخه
+  const tmp=document.createElement('div'); tmp.id='c-agencies'; tmp.style.display='none';
+  document.body.appendChild(tmp); render_c_agencies();
+  document.getElementById('adm-agencies').innerHTML=tmp.innerHTML;
+  document.body.removeChild(tmp);
+}
+function render_c_reviewers_adm() {
+  const tmp=document.createElement('div'); tmp.id='c-reviewers'; tmp.style.display='none';
+  document.body.appendChild(tmp); render_c_reviewers();
+  document.getElementById('adm-reviewers').innerHTML=tmp.innerHTML;
+  document.body.removeChild(tmp);
+}
+function render_adm_profile() {
+  const tmp=document.createElement('div'); tmp.id='c-profile'; tmp.style.display='none';
+  document.body.appendChild(tmp); render_c_profile();
+  document.getElementById('adm-profile').innerHTML=tmp.innerHTML;
+  document.body.removeChild(tmp);
+}
+
 
 function render_adm_h() {
   const t=ALL_ITEMS.length, p=ALL_ITEMS.filter(i=>i.status==='pending').length;
